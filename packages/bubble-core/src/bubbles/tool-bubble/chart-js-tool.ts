@@ -835,15 +835,10 @@ export class ChartJSTool extends ToolBubble<
       `🎨 [ChartJSTool] Rendering chart to buffer (${width}x${height})...`
     );
 
-    // Use 2x DPI for crisp images
-    const dpr = 2;
+    const dpr = 1;
     const canvas = createCanvas(width * dpr, height * dpr);
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
-
-    // Fill white background
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, width, height);
 
     // Scale up default font sizes so text is readable at the larger pixel size
     const existingOptions = (chartConfig.options ?? {}) as Record<
@@ -858,6 +853,10 @@ export class ChartJSTool extends ToolBubble<
       string,
       unknown
     >;
+    const existingTitleFont = (existingTitle.font ?? {}) as Record<
+      string,
+      unknown
+    >;
     const existingLegend = (existingPlugins.legend ?? {}) as Record<
       string,
       unknown
@@ -866,6 +865,31 @@ export class ChartJSTool extends ToolBubble<
       string,
       unknown
     >;
+    const existingScales = (existingOptions.scales ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+    // Apply default dark text/grid colors to all scales (axis labels, ticks, gridlines)
+    // Only set defaults — don't override colors the caller explicitly configured.
+    const patchedScales: Record<string, unknown> = {};
+    for (const [axisKey, axisCfg] of Object.entries(existingScales)) {
+      const cfg = (axisCfg ?? {}) as Record<string, unknown>;
+      const ticks = (cfg.ticks ?? {}) as Record<string, unknown>;
+      const grid = (cfg.grid ?? {}) as Record<string, unknown>;
+      const title = (cfg.title ?? {}) as Record<string, unknown>;
+      const titleFont = (title.font ?? {}) as Record<string, unknown>;
+      patchedScales[axisKey] = {
+        ...cfg,
+        ticks: { color: '#374151', ...ticks },
+        grid: { color: 'rgba(0, 0, 0, 0.08)', ...grid },
+        title: {
+          ...title,
+          color: title.color ?? '#374151',
+          font: { size: 14, ...titleFont },
+        },
+      };
+    }
 
     const chart = new Chart(canvas as unknown as HTMLCanvasElement, {
       ...(chartConfig as unknown as ChartConfiguration),
@@ -873,23 +897,31 @@ export class ChartJSTool extends ToolBubble<
         ...existingOptions,
         responsive: false,
         animation: false,
+        color: existingOptions.color ?? '#374151',
         font: {
           size: 14,
           ...((existingOptions.font as Record<string, unknown>) ?? {}),
         },
+        scales: patchedScales as ChartConfiguration['options'] extends {
+          scales?: infer S;
+        }
+          ? S
+          : never,
         plugins: {
           ...existingPlugins,
           title: {
             ...existingTitle,
+            color: existingTitle.color ?? '#111827',
             font: {
               size: 18,
               weight: 'bold' as const,
-              ...((existingTitle.font as Record<string, unknown>) ?? {}),
+              ...existingTitleFont,
             },
           },
           legend: {
             ...existingLegend,
             labels: {
+              color: '#374151',
               ...existingLegendLabels,
               font: {
                 size: 13,
@@ -900,10 +932,25 @@ export class ChartJSTool extends ToolBubble<
           },
         },
       },
+      // Chart.js plugin to paint a white background. Chart.draw() calls clearRect()
+      // which wipes any pre-fill, leaving transparent pixels that become black in JPEG.
+      // This plugin runs after the clear but before chart elements are drawn.
+      plugins: [
+        {
+          id: 'white-background',
+          beforeDraw: (chartInstance: Chart) => {
+            const { ctx: c, width: w, height: h } = chartInstance;
+            c.save();
+            c.fillStyle = '#ffffff';
+            c.fillRect(0, 0, w, h);
+            c.restore();
+          },
+        },
+      ],
     });
     chart.draw();
 
-    const jpegBuffer = canvas.toBuffer('image/jpeg');
+    const jpegBuffer = await canvas.encode('jpeg', 95);
     chart.destroy();
 
     return Buffer.from(jpegBuffer);

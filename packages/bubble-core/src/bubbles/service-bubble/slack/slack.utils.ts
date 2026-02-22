@@ -231,6 +231,18 @@ interface ParsedBlock {
 function normalizeMarkdownNewlines(markdown: string): string {
   let result = markdown;
 
+  // Protect markdown links and images from normalization.
+  // URLs can contain ___, --- etc. which would be falsely detected as
+  // horizontal rules or formatting. Replace them with placeholders first.
+  const LINK_SENTINEL = '<<__LINK_PLACEHOLDER_';
+  const LINK_SENTINEL_END = '__>>';
+  const linkPlaceholders: string[] = [];
+  result = result.replace(/!?\[[^\]]*\]\([^)]*\)/g, (match) => {
+    const idx = linkPlaceholders.length;
+    linkPlaceholders.push(match);
+    return `${LINK_SENTINEL}${idx}${LINK_SENTINEL_END}`;
+  });
+
   // Add newlines before headers (### Header) if not already at line start
   // Exclude # so multi-hash headers like ### don't get split into # + \n##
   result = result.replace(/([^\n#])(#{1,6}\s+\S)/g, '$1\n$2');
@@ -250,6 +262,12 @@ function normalizeMarkdownNewlines(markdown: string): string {
   // Add newlines before standalone list items (lines starting with - or * followed by space and text)
   // But only after sentence-ending punctuation to avoid false positives
   result = result.replace(/([.!?])(\s+)([-*]\s+)(?!\*)/g, '$1\n$3');
+
+  // Restore link placeholders
+  result = result.replace(
+    /<<__LINK_PLACEHOLDER_(\d+)__>>/g,
+    (_, idx) => linkPlaceholders[Number(idx)]
+  );
 
   return result;
 }

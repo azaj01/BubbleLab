@@ -903,10 +903,10 @@ export class ChartJSTool extends ToolBubble<
     });
     chart.draw();
 
-    const pngBuffer = canvas.toBuffer('image/png');
+    const jpegBuffer = canvas.toBuffer('image/jpeg');
     chart.destroy();
 
-    return Buffer.from(pngBuffer);
+    return Buffer.from(jpegBuffer);
   }
 
   /**

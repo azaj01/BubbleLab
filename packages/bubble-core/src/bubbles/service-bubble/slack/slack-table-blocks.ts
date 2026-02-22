@@ -18,6 +18,7 @@ export const BLOCKS = {
   multiTableStatus: load('multi-table-status.md'),
   calendarAnnouncement: load('calendar-announcement.md'),
   pricingComparisonCharts: load('pricing-comparison-charts.md'),
+  dauChartHighlights: load('dau-chart-highlights.md'),
 } as const;
 
 export const BATCH_BLOCKS = [1, 2, 3, 4, 5].map((i) =>

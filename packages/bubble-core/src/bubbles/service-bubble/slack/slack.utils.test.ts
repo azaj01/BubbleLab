@@ -959,6 +959,60 @@ Since both operators are consistently performing in the **70-75% range for quali
     expect(outroBlock).toBeDefined();
   });
 
+  it('should not break image URLs containing underscores (___) into divider blocks', () => {
+    const md = `Here's your DAU chart, dad 📊
+
+![Bubble Lab DAU Chart](https://api.nodex.bubblelab.ai/r2/2026-02-22T15-01-43-149Z-eedeb6fb-7824-4440-aba0-eede2926957e-charts_1771772503146-Bubble_Lab___Daily_Active_Users__Jan_23___Feb_22__.png)
+
+**Key highlights:**
+- **Peak:** 179 DAU on Feb 12
+- **Steady baseline:** ~120–160 through most of February
+
+Want me to add a 7-day rolling average?`;
+
+    const blocks = markdownToBlocks(md);
+
+    // The image URL should be an image block, NOT broken into section/divider blocks
+    const imageBlock = blocks.find(
+      (b) => b.type === 'image'
+    ) as SlackImageBlock;
+    expect(imageBlock).toBeDefined();
+    expect(imageBlock.image_url).toContain('Bubble_Lab___Daily_Active_Users');
+    expect(imageBlock.image_url).toMatch(/\.png$/);
+
+    // The ___ in the URL should NOT produce divider blocks
+    // (Before the fix, normalizeMarkdownNewlines split the URL at ___)
+    const dividers = blocks.filter((b) => b.type === 'divider');
+    expect(dividers).toHaveLength(0);
+
+    // Should still have the text content around the image
+    const introBlock = blocks[0] as SlackSectionBlock;
+    expect(introBlock.text.text).toContain('DAU chart');
+
+    const highlightsBlock = blocks.find(
+      (b): b is SlackSectionBlock =>
+        b.type === 'section' && b.text.text.includes('Key highlights')
+    );
+    expect(highlightsBlock).toBeDefined();
+  });
+
+  it('should not break link URLs containing triple underscores into divider blocks', () => {
+    const md = `Check out [this report](https://example.com/reports/daily___users___report.html) for details.`;
+
+    const blocks = markdownToBlocks(md);
+
+    // Should be a single section block — no dividers from ___ in the URL
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe('section');
+    expect((blocks[0] as SlackSectionBlock).text.text).toContain(
+      'example.com/reports/daily_'
+    );
+    expect((blocks[0] as SlackSectionBlock).text.text).toContain(
+      '_report.html'
+    );
+    expect(blocks.filter((b) => b.type === 'divider')).toHaveLength(0);
+  });
+
   it('should handle table with inline markdown and backtick-wrapped brackets in surrounding text', () => {
     const md = `All the real BUB tickets (BUB-1, 2, 3, 4, 5, 17) are already in Jira as KAN-62 through KAN-67. Nothing left to migrate — the \`[TEST]\` and \`[Integration Test]\` issues are skipped per the previous decision (dev noise).
 

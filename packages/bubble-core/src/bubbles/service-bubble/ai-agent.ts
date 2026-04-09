@@ -643,6 +643,57 @@ export class AIAgentBubble extends ServiceBubble<
    * Modify params before execution - centralizes all param transformations
    */
   protected override async beforeAction(): Promise<void> {
+    // Dynamic capability + credential injection (Pearl auto-activation).
+    // Only applies to the MASTER agent, not capability subagents.
+    // Subagents receive their single capability via the use-capability handler.
+    const isSubAgent = this.params.name?.startsWith('Capability Agent:');
+    if (!isSubAgent) {
+      const dynamicExecMeta = this.context?.executionMeta as
+        | Record<string, unknown>
+        | undefined;
+
+      // Replace capabilities with dynamic list (Pearl-only, authoritative source)
+      const dynamicCaps = dynamicExecMeta?._dynamicCapabilities as
+        | Array<{
+            id: string;
+            inputs?: Record<string, string | number | boolean | string[]>;
+            context?: string;
+          }>
+        | undefined;
+      if (dynamicCaps?.length) {
+        this.params.capabilities = dynamicCaps.map((c) => ({
+          ...c,
+          inputs: c.inputs ?? {},
+        }));
+      }
+
+      // Inject all user credentials + build pools
+      const dynamicCreds = dynamicExecMeta?._dynamicCredentials as
+        | Record<string, Array<{ id: number; name: string; value: string }>>
+        | undefined;
+      if (dynamicCreds) {
+        for (const [credType, entries] of Object.entries(dynamicCreds)) {
+          if (!entries.length) continue;
+          if (!this.params.credentials) this.params.credentials = {};
+          (this.params.credentials as Record<string, string>)[credType] =
+            entries[0].value;
+          if (entries.length > 1) {
+            if (!this.params.credentialPool)
+              this.params.credentialPool = {} as Record<
+                CredentialType,
+                Array<{ id: number; name: string; value: string }>
+              >;
+            (
+              this.params.credentialPool as Record<
+                string,
+                Array<{ id: number; name: string; value: string }>
+              >
+            )[credType] = entries;
+          }
+        }
+      }
+    }
+
     // Deduplicate capabilities by id — keep the first occurrence of each
     if (this.params.capabilities && this.params.capabilities.length > 1) {
       const seen = new Set<string>();
@@ -1997,14 +2048,22 @@ export class AIAgentBubble extends ServiceBubble<
     }
 
     // Check dynamically-set credentials (from manage_capability set_credential
-    // in current execution) as fallback for any missing credential types
+    // or computeActiveCapabilities) as fallback for any missing credential types.
+    // Supports both old format (Record<string, string>) and new consolidated
+    // format (Record<string, Array<{id, name, value}>>).
     const dynamicCreds = (
       this.context?.executionMeta as Record<string, unknown> | undefined
-    )?._dynamicCredentials as Record<string, string> | undefined;
+    )?._dynamicCredentials as
+      | Record<string, string | Array<{ value: string }>>
+      | undefined;
     if (dynamicCreds) {
       for (const credType of allCredTypes) {
-        if (dynamicCreds[credType]) {
-          resolved[credType] = dynamicCreds[credType];
+        const val = dynamicCreds[credType];
+        if (!val) continue;
+        if (typeof val === 'string') {
+          resolved[credType] = val;
+        } else if (Array.isArray(val) && val.length > 0) {
+          resolved[credType] = val[0].value;
         }
       }
     }

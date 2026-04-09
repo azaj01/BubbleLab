@@ -116,7 +116,7 @@ export async function applyCapabilityPreprocessing(
                 );
               } else {
                 credLines.push(
-                  `${credType}: ✗ NOT SET — use initiate-credential-creation then manage_capability set_credential`
+                  `${credType}: ✗ NOT SET — use initiate-credential-creation to connect`
                 );
               }
             }

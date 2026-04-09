@@ -123,6 +123,11 @@ export async function applyCapabilityPreprocessing(
             summary += `\n   Credentials: ${credLines.join(', ')}`;
           }
 
+          // Include user-configured context (workspace-specific instructions)
+          if (c.context) {
+            summary += `\n   User context: ${c.context}`;
+          }
+
           return summary;
         })
       )

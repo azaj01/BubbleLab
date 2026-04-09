@@ -2047,8 +2047,9 @@ export class AIAgentBubble extends ServiceBubble<
       }
     }
 
-    // Check dynamically-set credentials (from manage_capability set_credential
-    // or computeActiveCapabilities) as fallback for any missing credential types.
+    // Check dynamically-set credentials as FALLBACK for missing credential types.
+    // Only fills in types not already resolved from this.params.credentials
+    // (which may have been overridden by use-capability pool routing).
     // Supports both old format (Record<string, string>) and new consolidated
     // format (Record<string, Array<{id, name, value}>>).
     const dynamicCreds = (
@@ -2058,6 +2059,7 @@ export class AIAgentBubble extends ServiceBubble<
       | undefined;
     if (dynamicCreds) {
       for (const credType of allCredTypes) {
+        if (resolved[credType]) continue; // Don't overwrite pool-routed credentials
         const val = dynamicCreds[credType];
         if (!val) continue;
         if (typeof val === 'string') {

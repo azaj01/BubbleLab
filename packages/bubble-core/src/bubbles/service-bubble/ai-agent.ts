@@ -1847,6 +1847,14 @@ export class AIAgentBubble extends ServiceBubble<
               }
             }
 
+            // Store which credential types were explicitly overridden so the
+            // subagent's capability can prefer the right provider type.
+            if (credentialOverrides && this.context?.executionMeta) {
+              (
+                this.context.executionMeta as Record<string, unknown>
+              )._credentialOverrideTypes = Object.keys(credentialOverrides);
+            }
+
             // Dynamic credentials (from manage_capability set_credential) are
             // merged via resolveCapabilityCredentials() on the subagent — no
             // need to merge here since the subagent inherits executionMeta.

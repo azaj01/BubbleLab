@@ -672,6 +672,21 @@ export const CREDENTIAL_TYPE_CONFIG: Record<CredentialType, CredentialConfig> =
         },
       ],
     },
+    [CredentialType.CLERK_CRED]: {
+      label: 'Clerk',
+      description:
+        'Clerk Secret Key for user management, organizations, and billing',
+      placeholder: 'sk_test_... or sk_live_...',
+      namePlaceholder: 'My Clerk Secret Key',
+      credentialConfigurations: {},
+    },
+    [CredentialType.CLERK_API_KEY]: {
+      label: 'Clerk (Alt)',
+      description: 'Alternate Clerk credential type',
+      placeholder: 'sk_test_... or sk_live_...',
+      namePlaceholder: 'My Clerk Secret Key',
+      credentialConfigurations: {},
+    },
     [CredentialType.CREDENTIAL_WILDCARD]: {
       label: 'Any Credential',
       description:
@@ -755,6 +770,8 @@ export const CREDENTIAL_ENV_MAP: Record<CredentialType, string> = {
   [CredentialType.DISCORD_CRED]: '', // OAuth credential, no env var
   [CredentialType.DOCUSIGN_CRED]: '', // OAuth credential, no env var
   [CredentialType.METABASE_CRED]: '', // Multi-field credential (url + apiKey), no single env var
+  [CredentialType.CLERK_CRED]: '', // OAuth credential, no env var
+  [CredentialType.CLERK_API_KEY]: '', // User-provided Secret Key, no env var
   [CredentialType.CREDENTIAL_WILDCARD]: '', // Wildcard marker, not a real credential
 };
 
@@ -2703,6 +2720,7 @@ export const BUBBLE_CREDENTIAL_OPTIONS: Record<
   sortly: [CredentialType.SORTLY_API_KEY],
   docusign: [CredentialType.DOCUSIGN_CRED],
   metabase: [CredentialType.METABASE_CRED],
+  clerk: [CredentialType.CLERK_CRED],
 };
 
 export interface CredentialSiblingEntry {

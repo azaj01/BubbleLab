@@ -416,36 +416,7 @@ export const TRIGGER_EVENT_CONFIGS: Record<
       'Triggered when a message is posted in a channel your bot has access to',
     requiredCredentialType: 'SLACK_CRED',
     requiredConfigFields: ['slack_active_channels'],
-    setupGuide: `## Slack Message Event Setup Guide
-
-### 1. Create a Slack App
-1. Go to [Slack API Apps](https://api.slack.com/apps)
-2. Click "Create New App" → "From scratch"
-3. Name your app and select your workspace
-
-### 2. Configure OAuth Scopes
-Navigate to **OAuth & Permissions** and add these Bot Token Scopes:
-- \`channels:history\` - To read messages in public channels
-- \`groups:history\` - To read messages in private channels
-- \`im:history\` - To read direct messages
-- \`mpim:history\` - To read group direct messages
-- \`chat:write\` - To send messages
-- \`users:read\` - To look up user names and timezones
-
-### 3. Enable Event Subscriptions
-1. Go to **Event Subscriptions**
-2. Toggle "Enable Events" to ON
-3. Toggle the webhook active button above and copy the webhook URL
-4. Add your webhook URL to the Request URL field
-5. Subscribe to bot events: \`message.channels\`, \`message.groups\`, \`message.im\`, \`message.mpim\`
-
-### 4. Install to Workspace
-1. Go to **Install App**
-2. Click "Install to Workspace"
-3. Authorize the requested permissions
-
-### 5. Get Your Bot Token
-Copy the **Bot User OAuth Token** (starts with \`xoxb-\`) from the OAuth & Permissions page.`,
+    setupGuide: `Wire a SLACK_CRED via set-credentials (with triggerCredentialId). Use configure-flow to set defaultInputs.slack_active_channels for channel filtering. No manual Slack app or event subscription setup needed — OAuth handles everything.`,
     payloadSchema: {
       type: 'object',
       properties: {
@@ -631,34 +602,7 @@ Copy the **Bot User OAuth Token** (starts with \`xoxb-\`) from the OAuth & Permi
     description: 'Triggered when someone mentions your bot in a Slack channel',
     requiredCredentialType: 'SLACK_CRED',
     requiredConfigFields: ['slack_active_channels'],
-    setupGuide: `## Slack Bot Setup Guide
-
-### 1. Create a Slack App
-1. Go to [Slack API Apps](https://api.slack.com/apps)
-2. Click "Create New App" → "From scratch"
-3. Name your app and select your workspace
-
-### 2. Configure OAuth Scopes
-Navigate to **OAuth & Permissions** and add these Bot Token Scopes:
-- \`app_mentions:read\` - To receive mention events
-- \`chat:write\` - To send messages
-- \`channels:history\` - To read channel messages (optional)
-- \`users:read\` - To look up user names and timezones
-
-### 3. Enable Event Subscriptions
-1. Go to **Event Subscriptions**
-2. Toggle "Enable Events" to ON
-3. Toggle the webhook active button above and copy the webhook URL
-4. Add your webhook URL to the Request URL field
-5. Subscribe to bot events: \`app_mention\`
-
-### 4. Install to Workspace
-1. Go to **Install App**
-2. Click "Install to Workspace"
-3. Authorize the requested permissions
-
-### 5. Get Your Bot Token
-Copy the **Bot User OAuth Token** (starts with \`xoxb-\`) from the OAuth & Permissions page.`,
+    setupGuide: `Wire a SLACK_CRED via set-credentials (with triggerCredentialId). Use configure-flow to set defaultInputs.slack_active_channels for channel filtering. No manual Slack app or event subscription setup needed — OAuth handles everything.`,
     payloadSchema: {
       type: 'object',
       properties: {
@@ -837,35 +781,7 @@ Copy the **Bot User OAuth Token** (starts with \`xoxb-\`) from the OAuth & Permi
       'Triggered when a user adds an emoji reaction to a message in a Slack channel',
     requiredCredentialType: 'SLACK_CRED',
     requiredConfigFields: ['slack_active_channels'],
-    setupGuide: `## Slack Reaction Event Setup Guide
-
-### 1. Create a Slack App
-1. Go to [Slack API Apps](https://api.slack.com/apps)
-2. Click "Create New App" → "From scratch"
-3. Name your app and select your workspace
-
-### 2. Configure OAuth Scopes
-Navigate to **OAuth & Permissions** and add these Bot Token Scopes:
-- \`reactions:read\` - To receive reaction events
-- \`channels:history\` - To fetch the reacted message text
-- \`groups:history\` - To fetch messages in private channels
-- \`chat:write\` - To send messages
-- \`users:read\` - To look up user names
-
-### 3. Enable Event Subscriptions
-1. Go to **Event Subscriptions**
-2. Toggle "Enable Events" to ON
-3. Toggle the webhook active button above and copy the webhook URL
-4. Add your webhook URL to the Request URL field
-5. Subscribe to bot events: \`reaction_added\`
-
-### 4. Install to Workspace
-1. Go to **Install App**
-2. Click "Install to Workspace"
-3. Authorize the requested permissions
-
-### 5. Get Your Bot Token
-Copy the **Bot User OAuth Token** (starts with \`xoxb-\`) from the OAuth & Permissions page.`,
+    setupGuide: `Wire a SLACK_CRED via set-credentials (with triggerCredentialId). Use configure-flow to set defaultInputs.slack_active_channels for channel filtering. No manual Slack app or event subscription setup needed — OAuth handles everything.`,
     payloadSchema: {
       type: 'object',
       properties: {

@@ -18,6 +18,12 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 /** Runtime context passed to capability tool factories and system prompt factories. */
 export interface CapabilityRuntimeContext {
   credentials: Partial<Record<CredentialType, string>>;
+  /** Metadata-only credential pool — no secrets. For capabilities that need to
+   *  disambiguate between multiple credentials of the same type (e.g., data-analyst
+   *  routing to "readonly" vs "write" PostgreSQL). */
+  credentialPoolMeta?: Partial<
+    Record<CredentialType, Array<{ id: number; name: string }>>
+  >;
   inputs: Record<string, string | number | boolean | string[]>;
   bubbleContext?: BubbleContext;
   /** Free-text context from the capability config, injected into the subagent system prompt. */

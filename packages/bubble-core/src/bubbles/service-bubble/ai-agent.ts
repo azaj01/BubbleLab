@@ -1634,8 +1634,26 @@ export class AIAgentBubble extends ServiceBubble<
         if (masterTools.length === 0) continue;
 
         try {
+          // Build metadata-only pool for disambiguation (no secrets)
+          const poolMeta = this.params.credentialPool
+            ? (Object.fromEntries(
+                Object.entries(this.params.credentialPool).map(
+                  ([type, entries]) => [
+                    type,
+                    (
+                      entries as Array<{
+                        id: number;
+                        name: string;
+                        value: string;
+                      }>
+                    ).map((e) => ({ id: e.id, name: e.name })),
+                  ]
+                )
+              ) as CapabilityRuntimeContext['credentialPoolMeta'])
+            : undefined;
           const ctx: CapabilityRuntimeContext = {
             credentials: this.resolveCapabilityCredentials(capDef, capConfig),
+            credentialPoolMeta: poolMeta,
             inputs: mergeCapabilityInputDefaults(
               capDef.metadata.inputs,
               capConfig.inputs
@@ -1867,6 +1885,7 @@ export class AIAgentBubble extends ServiceBubble<
                 model: { ...this.params.model },
                 capabilities: [capConfig], // single cap = eager load in sub-agent
                 credentials: subAgentCredentials,
+                credentialPool: this.params.credentialPool,
               },
               this.context,
               `capability-${capabilityId}`
@@ -1912,8 +1931,26 @@ export class AIAgentBubble extends ServiceBubble<
 
         try {
           // Shared ctx captured by all tool funcs via closure — we mutate bubbleContext per-tool
+          // Build metadata-only pool for disambiguation (no secrets)
+          const poolMeta = this.params.credentialPool
+            ? (Object.fromEntries(
+                Object.entries(this.params.credentialPool).map(
+                  ([type, entries]) => [
+                    type,
+                    (
+                      entries as Array<{
+                        id: number;
+                        name: string;
+                        value: string;
+                      }>
+                    ).map((e) => ({ id: e.id, name: e.name })),
+                  ]
+                )
+              ) as CapabilityRuntimeContext['credentialPoolMeta'])
+            : undefined;
           const ctx: CapabilityRuntimeContext = {
             credentials: this.resolveCapabilityCredentials(capDef, capConfig),
+            credentialPoolMeta: poolMeta,
             inputs: mergeCapabilityInputDefaults(
               capDef.metadata.inputs,
               capConfig.inputs

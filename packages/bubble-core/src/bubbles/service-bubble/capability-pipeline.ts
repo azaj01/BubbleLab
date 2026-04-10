@@ -27,6 +27,18 @@ export async function applyCapabilityPreprocessing(
   credentialPool?: Partial<Record<CredentialType, CredentialPoolEntry[]>>
 ): Promise<AIAgentParamsParsed> {
   const caps = params.capabilities ?? [];
+
+  // Build metadata-only pool (no secrets) for capabilities that need to
+  // disambiguate between multiple credentials of the same type.
+  const credentialPoolMeta = credentialPool
+    ? (Object.fromEntries(
+        Object.entries(credentialPool).map(([type, entries]) => [
+          type,
+          entries.map((e) => ({ id: e.id, name: e.name })),
+        ])
+      ) as Partial<Record<CredentialType, Array<{ id: number; name: string }>>>)
+    : undefined;
+
   if (caps.length > 1) {
     // Multi-capability delegator: use Sonnet for reliable tool-calling / routing.
     // Sub-agents apply their own modelConfigOverride in single-cap mode.
@@ -77,6 +89,7 @@ export async function applyCapabilityPreprocessing(
             try {
               const ctx: CapabilityRuntimeContext = {
                 credentials: resolveCapabilityCredentials(def, c),
+                credentialPoolMeta,
                 inputs: c.inputs ?? {},
                 bubbleContext,
               };
@@ -142,6 +155,7 @@ export async function applyCapabilityPreprocessing(
 
       const ctx: CapabilityRuntimeContext = {
         credentials: resolveCapabilityCredentials(capDef, capConfig),
+        credentialPoolMeta,
         inputs: capConfig.inputs ?? {},
         bubbleContext,
         context: capConfig.context,

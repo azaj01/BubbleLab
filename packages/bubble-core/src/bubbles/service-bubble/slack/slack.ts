@@ -176,7 +176,7 @@ const SlackParamsSchema = z.discriminatedUnion('operation', [
     operation: z
       .literal('list_channels')
       .describe(
-        'List all channels in the Slack workspace. Required scopes: channels:read (public), groups:read (private), im:read (DMs), mpim:read (group DMs)'
+        'List all channels in the Slack workspace. Each channel includes `is_member` — filter to true for channels the bot can read without joining. Required scopes: channels:read (public), groups:read (private), im:read (DMs), mpim:read (group DMs)'
       ),
     types: z
       .array(ChannelTypes)
@@ -293,7 +293,7 @@ const SlackParamsSchema = z.discriminatedUnion('operation', [
     operation: z
       .literal('get_conversation_history')
       .describe(
-        'Retrieve message history from a channel or direct message. Required scopes: channels:history (public), groups:history (private), im:history (DMs), mpim:history (group DMs)'
+        'Retrieve message history from a channel or direct message. Bot must be a member (use list_channels with `is_member` filter, or join_channel first). Required scopes: channels:history (public), groups:history (private), im:history (DMs), mpim:history (group DMs)'
       ),
     channel: z
       .string()
@@ -725,7 +725,9 @@ const SlackChannelSchema = z
     is_member: z
       .boolean()
       .optional()
-      .describe('True if the bot is a member of this channel'),
+      .describe(
+        'True if the bot is a member of this channel. Filter on this before calling get_conversation_history.'
+      ),
     is_open: z.boolean().optional().describe('True if the channel is open'),
     topic: z
       .object({

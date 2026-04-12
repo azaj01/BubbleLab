@@ -194,6 +194,14 @@ export const bubbleFlowExecutionSchema = z.object({
     .string()
     .optional()
     .openapi({ description: 'Error message if failed' }),
+  source: z.string().optional().openapi({
+    description:
+      'Which surface triggered this execution (mcp, manual, web-pearl, slack-pearl, cron, resume, webhook).',
+  }),
+  originExecutionId: z.number().optional().openapi({
+    description:
+      'For resumes: the ID of the execution that originally requested the approval.',
+  }),
   startedAt: z.string().openapi({ description: 'Execution start timestamp' }),
   webhook_url: z.string().openapi({ description: 'Webhook URL' }),
   completedAt: z

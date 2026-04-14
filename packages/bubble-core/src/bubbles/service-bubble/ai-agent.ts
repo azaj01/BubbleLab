@@ -1624,8 +1624,10 @@ export class AIAgentBubble extends ServiceBubble<
 
     // 3. Capability tools
     const caps = this.params.capabilities ?? [];
-    if (caps.length > 1) {
-      // Multi-capability: register master-level tools directly on the master agent
+    const isCapDelegator =
+      caps.length >= 1 && !this.params.name?.startsWith('Capability Agent:');
+    if (isCapDelegator) {
+      // Master agent: register master-level tools + use-capability delegation tool
       for (const capConfig of caps) {
         const capDef = getCapability(capConfig.id);
         if (!capDef) continue;
@@ -1924,10 +1926,10 @@ export class AIAgentBubble extends ServiceBubble<
         } as any)
       );
       console.debug(
-        `🔧 [AIAgent] Multi-capability delegation mode: registered use-capability tool for [${capIds.join(', ')}]`
+        `🔧 [AIAgent] Capability delegation mode: registered use-capability tool for [${capIds.join(', ')}]`
       );
     } else {
-      // Single capability or none: register tools directly as before
+      // Sub-agent or no capabilities: register tools directly
       for (const capConfig of caps) {
         const capDef = getCapability(capConfig.id);
         if (!capDef) {

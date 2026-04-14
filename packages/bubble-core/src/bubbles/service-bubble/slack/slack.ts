@@ -588,6 +588,19 @@ const SlackParamsSchema = z.discriminatedUnion('operation', [
       .describe(
         'Unix timestamp (seconds) for when to send the message. Must be within 120 days from now.'
       ),
+    username: z
+      .string()
+      .optional()
+      .describe('Override bot username for this message'),
+    icon_emoji: z
+      .string()
+      .optional()
+      .describe('Override bot icon with emoji (e.g., :robot_face:)'),
+    icon_url: z
+      .string()
+      .url()
+      .optional()
+      .describe('Override bot icon with custom image URL'),
     thread_ts: z
       .string()
       .optional()
@@ -2472,6 +2485,9 @@ Comprehensive Slack integration for messaging and workspace management.
       channel,
       text,
       post_at,
+      username,
+      icon_emoji,
+      icon_url,
       thread_ts,
       blocks,
       unfurl_links,
@@ -2487,6 +2503,9 @@ Comprehensive Slack integration for messaging and workspace management.
       post_at,
     };
 
+    if (username) body.username = username;
+    if (icon_emoji) body.icon_emoji = icon_emoji;
+    if (icon_url) body.icon_url = icon_url;
     if (thread_ts) body.thread_ts = thread_ts;
     if (blocks) body.blocks = blocks;
     if (unfurl_links !== undefined) body.unfurl_links = unfurl_links;

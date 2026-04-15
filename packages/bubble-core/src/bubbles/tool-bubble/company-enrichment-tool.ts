@@ -343,41 +343,43 @@ export class CompanyEnrichmentTool extends ToolBubble<
       const { companyIdentifier } = this.params;
       const identifierType = this.detectIdentifierType(companyIdentifier);
 
-      // Build FullEnrich search body based on identifier type.
+      // Build FullEnrich search filters based on identifier type.
       // FullEnrich doesn't support LinkedIn URL search directly — fall back
       // to parsing the slug as a name filter.
-      const params: Record<string, unknown> = {
-        operation: 'company_search',
-        limit: 1,
-        credentials,
-      };
-
+      let filterKey: 'domains' | 'names';
+      let filterValue: string;
       if (identifierType === 'domain') {
-        params.domains = [{ value: companyIdentifier }];
+        filterKey = 'domains';
+        filterValue = companyIdentifier;
       } else if (identifierType === 'linkedin') {
-        // Extract slug: linkedin.com/company/<slug>/... → <slug>
         const match = companyIdentifier.match(
           /linkedin\.com\/company\/([^/?]+)/
         );
-        const slug = match?.[1] ?? companyIdentifier;
-        params.names = [{ value: slug }];
+        filterKey = 'names';
+        filterValue = match?.[1] ?? companyIdentifier;
       } else {
-        params.names = [{ value: companyIdentifier }];
+        filterKey = 'names';
+        filterValue = companyIdentifier;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const feResult = await new FullEnrichBubble(
-        params as any,
-        this.context
+      const company_search = await new FullEnrichBubble(
+        {
+          operation: 'company_search',
+          limit: 1,
+          [filterKey]: [{ value: filterValue }],
+          credentials,
+        },
+        this.context,
+        'company_search'
       ).action();
 
-      if (!feResult.success) {
+      if (!company_search.success) {
         return this.createErrorResult(
-          feResult.error || 'FullEnrich company search failed'
+          company_search.error || 'FullEnrich company search failed'
         );
       }
 
-      const data = feResult.data as {
+      const data = company_search.data as {
         companies?: Array<Record<string, unknown>>;
       };
       const company = data.companies?.[0];

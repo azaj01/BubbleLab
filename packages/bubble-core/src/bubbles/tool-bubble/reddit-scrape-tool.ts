@@ -4,6 +4,25 @@ import type { BubbleContext } from '../../types/bubble.js';
 import { CredentialType, type BubbleName } from '@bubblelab/shared-schemas';
 import { HttpBubble } from '../service-bubble/http.js';
 
+// Raw Reddit API post shape — subset of fields we read.
+interface RedditApiPost {
+  title?: string;
+  url?: string;
+  author?: string;
+  score?: number;
+  num_comments?: number;
+  created_utc?: number;
+  permalink?: string;
+  selftext?: string;
+  selftext_html?: string;
+  is_self?: boolean;
+  subreddit?: string;
+  post_hint?: string;
+  thumbnail?: string;
+  domain?: string;
+  link_flair_text?: string;
+}
+
 // Reddit post structure schema
 const RedditPostSchema = z.object({
   title: z.string().describe('Post title'),
@@ -304,7 +323,8 @@ export class RedditScrapeTool extends ToolBubble<
         }
 
         // Get the 'after' parameter for next page
-        after = redditData?.data?.after || null;
+        const listing = redditData as { data?: { after?: string } } | undefined;
+        after = listing?.data?.after ?? null;
 
         // If no more posts available, break
         if (!after || posts.length === 0) {
@@ -355,24 +375,27 @@ export class RedditScrapeTool extends ToolBubble<
   /**
    * Fetch data from Reddit's JSON API via HttpBubble (wall-clock timeout via AbortController).
    */
-  private async fetchRedditData(url: string): Promise<any> {
-    const result = await new HttpBubble({
-      url,
-      method: 'GET',
-      headers: {
-        'User-Agent': this.getRandomUserAgent(),
+  private async fetchRedditData(url: string): Promise<unknown> {
+    const reddit_http = await new HttpBubble(
+      {
+        url,
+        method: 'GET',
+        headers: {
+          'User-Agent': this.getRandomUserAgent(),
+        },
+        timeout: 15000,
+        followRedirects: true,
       },
-      timeout: 15000,
-      followRedirects: true,
-    }).action();
+      this.context
+    ).action();
 
-    if (!result.success || !result.data) {
+    if (!reddit_http.success || !reddit_http.data) {
       throw new Error(
-        `Network error: ${result.error ?? 'HttpBubble returned no data'}`
+        `Network error: ${reddit_http.error ?? 'HttpBubble returned no data'}`
       );
     }
 
-    const { status, statusText, json, body } = result.data;
+    const { status, statusText, json, body } = reddit_http.data;
     if (status !== 200) {
       throw new Error(`Reddit API returned status ${status}: ${statusText}`);
     }
@@ -389,8 +412,11 @@ export class RedditScrapeTool extends ToolBubble<
   /**
    * Parse Reddit JSON response into standardized post objects
    */
-  private parseRedditResponse(data: any): RedditPost[] {
+  private parseRedditResponse(raw: unknown): RedditPost[] {
     const posts: RedditPost[] = [];
+    const data = raw as
+      | { data?: { children?: Array<{ data?: RedditApiPost }> } }
+      | undefined;
 
     try {
       if (data?.data?.children) {

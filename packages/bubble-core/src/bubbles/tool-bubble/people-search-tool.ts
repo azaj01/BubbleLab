@@ -987,57 +987,59 @@ export class PeopleSearchTool extends ToolBubble<
     const feLimit = Math.min(limit, 100);
 
     try {
-      const fullEnrichParams: Record<string, unknown> = {
-        operation: 'people_search',
-        limit: feLimit,
-        credentials,
-      };
-      if (allJobTitles.length > 0)
-        fullEnrichParams.current_position_titles = allJobTitles.map((v) => ({
-          value: v,
-        }));
-      if (companyName)
-        fullEnrichParams.current_company_names = [{ value: companyName }];
-      if (pastCompanyName)
-        fullEnrichParams.past_company_names = [{ value: pastCompanyName }];
-      if (allLocations.length > 0)
-        fullEnrichParams.person_locations = allLocations.map((v) => ({
-          value: v,
-        }));
-      if (skills?.length)
-        fullEnrichParams.person_skills = skills.map((v) => ({ value: v }));
-      if (seniorityLevels?.length)
-        fullEnrichParams.current_position_seniority_level = seniorityLevels.map(
-          (v) => ({ value: v })
-        );
-      if (companyIndustries?.length)
-        fullEnrichParams.current_company_industries = companyIndustries.map(
-          (v) => ({ value: v })
-        );
-      if (
-        minCompanyHeadcount !== undefined ||
-        maxCompanyHeadcount !== undefined
-      ) {
-        const range: { min?: number; max?: number } = {};
-        if (minCompanyHeadcount !== undefined) range.min = minCompanyHeadcount;
-        if (maxCompanyHeadcount !== undefined) range.max = maxCompanyHeadcount;
-        fullEnrichParams.current_company_headcounts = [range];
-      }
-      if (cursor) fullEnrichParams.search_after = cursor;
+      const headcountRange: { min?: number; max?: number } = {};
+      if (minCompanyHeadcount !== undefined)
+        headcountRange.min = minCompanyHeadcount;
+      if (maxCompanyHeadcount !== undefined)
+        headcountRange.max = maxCompanyHeadcount;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const feResult = await new FullEnrichBubble(
-        fullEnrichParams as any,
-        this.context
+      const people_search = await new FullEnrichBubble(
+        {
+          operation: 'people_search',
+          limit: feLimit,
+          ...(allJobTitles.length > 0 && {
+            current_position_titles: allJobTitles.map((v) => ({ value: v })),
+          }),
+          ...(companyName && {
+            current_company_names: [{ value: companyName }],
+          }),
+          ...(pastCompanyName && {
+            past_company_names: [{ value: pastCompanyName }],
+          }),
+          ...(allLocations.length > 0 && {
+            person_locations: allLocations.map((v) => ({ value: v })),
+          }),
+          ...(skills?.length && {
+            person_skills: skills.map((v) => ({ value: v })),
+          }),
+          ...(seniorityLevels?.length && {
+            current_position_seniority_level: seniorityLevels.map((v) => ({
+              value: v,
+            })),
+          }),
+          ...(companyIndustries?.length && {
+            current_company_industries: companyIndustries.map((v) => ({
+              value: v,
+            })),
+          }),
+          ...((minCompanyHeadcount !== undefined ||
+            maxCompanyHeadcount !== undefined) && {
+            current_company_headcounts: [headcountRange],
+          }),
+          ...(cursor && { search_after: cursor }),
+          credentials,
+        },
+        this.context,
+        'people_search'
       ).action();
 
-      if (!feResult.success) {
+      if (!people_search.success) {
         return this.createErrorResult(
-          feResult.error || 'FullEnrich people search failed'
+          people_search.error || 'FullEnrich people search failed'
         );
       }
 
-      const data = feResult.data as {
+      const data = people_search.data as {
         people?: Array<Record<string, unknown>>;
         metadata?: {
           total: number;

@@ -193,6 +193,14 @@ const GeoDistanceSearchSchema = z.object({
 
 // Tool parameters - comprehensive, agent-friendly interface
 const PeopleSearchToolParamsSchema = z.object({
+  // ===== PROVIDER =====
+  provider: z
+    .enum(['crustdata', 'fullenrich'])
+    .default('fullenrich')
+    .describe(
+      "Search provider. Default: 'fullenrich'. Supported filter sets differ between providers — unsupported filters are silently ignored. FullEnrich does not support: locationRadius, minYearsExperience/maxYearsExperience, functionCategories, schoolName, pastJobTitle, minYearsAtCompany, recentlyChangedJobs, minConnections, excludeCompanies, excludeProfiles, languages. Crustdata supports all filters. Email enrichment (enrichEmails) only applies to Crustdata provider."
+    ),
+
   // ===== PRIMARY SEARCH CRITERIA (at least one required) =====
   companyName: z
     .string()
@@ -492,10 +500,18 @@ export class PeopleSearchTool extends ToolBubble<
   }
 
   async performAction(): Promise<PeopleSearchToolResult> {
+    const { provider } = this.params;
+    if (provider === 'fullenrich') {
+      return this.searchFullEnrich();
+    }
+    return this.searchCrustdata();
+  }
+
+  private async searchCrustdata(): Promise<PeopleSearchToolResult> {
     const credentials = this.params?.credentials;
     if (!credentials || !credentials[CredentialType.CRUSTDATA_API_KEY]) {
       return this.createErrorResult(
-        'People search requires CRUSTDATA_API_KEY credential. Please configure it in your settings.'
+        'People search via Crustdata requires CRUSTDATA_API_KEY credential. Please configure it in your settings.'
       );
     }
 
@@ -905,6 +921,308 @@ export class PeopleSearchTool extends ToolBubble<
         error instanceof Error ? error.message : 'Unknown error occurred'
       );
     }
+  }
+
+  /**
+   * Search via FullEnrich v2 /people/search. Maps tool params to FullEnrich
+   * filters (unsupported filters silently dropped), normalizes results into
+   * PersonResult[]. Email enrichment post-step is not applied — FullEnrich
+   * already returns work emails when available.
+   */
+  private async searchFullEnrich(): Promise<PeopleSearchToolResult> {
+    const credentials = this.params?.credentials;
+    if (!credentials || !credentials[CredentialType.FULLENRICH_API_KEY]) {
+      return this.createErrorResult(
+        'People search via FullEnrich requires FULLENRICH_API_KEY credential. Please configure it in your settings.'
+      );
+    }
+
+    const {
+      companyName,
+      jobTitle,
+      jobTitles,
+      location,
+      skills,
+      seniorityLevels,
+      companyIndustries,
+      minCompanyHeadcount,
+      maxCompanyHeadcount,
+      pastCompanyName,
+      country,
+      city,
+      limit = 100,
+      cursor,
+    } = this.params;
+
+    // Build title list (merge jobTitle + jobTitles)
+    const allJobTitles: string[] = [];
+    if (jobTitle) allJobTitles.push(jobTitle);
+    if (jobTitles?.length) allJobTitles.push(...jobTitles);
+
+    // Build location list (concatenate location + city + country)
+    const allLocations: string[] = [];
+    if (location) allLocations.push(location);
+    if (city) allLocations.push(city);
+    if (country) allLocations.push(country);
+
+    // Validate at least one FE-supported criteria is set
+    const hasCriteria =
+      allJobTitles.length > 0 ||
+      allLocations.length > 0 ||
+      companyName ||
+      pastCompanyName ||
+      (skills && skills.length > 0) ||
+      (seniorityLevels && seniorityLevels.length > 0) ||
+      (companyIndustries && companyIndustries.length > 0) ||
+      minCompanyHeadcount !== undefined ||
+      maxCompanyHeadcount !== undefined;
+
+    if (!hasCriteria) {
+      return this.createErrorResult(
+        'FullEnrich people search requires at least one supported filter (companyName, jobTitle/jobTitles, location/city/country, skills, seniorityLevels, companyIndustries, min/maxCompanyHeadcount, pastCompanyName).'
+      );
+    }
+
+    // FullEnrich caps at limit=100 per request
+    const feLimit = Math.min(limit, 100);
+
+    try {
+      const fullEnrichParams: Record<string, unknown> = {
+        operation: 'people_search',
+        limit: feLimit,
+        credentials,
+      };
+      if (allJobTitles.length > 0)
+        fullEnrichParams.current_position_titles = allJobTitles.map((v) => ({
+          value: v,
+        }));
+      if (companyName)
+        fullEnrichParams.current_company_names = [{ value: companyName }];
+      if (pastCompanyName)
+        fullEnrichParams.past_company_names = [{ value: pastCompanyName }];
+      if (allLocations.length > 0)
+        fullEnrichParams.person_locations = allLocations.map((v) => ({
+          value: v,
+        }));
+      if (skills?.length)
+        fullEnrichParams.person_skills = skills.map((v) => ({ value: v }));
+      if (seniorityLevels?.length)
+        fullEnrichParams.current_position_seniority_level = seniorityLevels.map(
+          (v) => ({ value: v })
+        );
+      if (companyIndustries?.length)
+        fullEnrichParams.current_company_industries = companyIndustries.map(
+          (v) => ({ value: v })
+        );
+      if (
+        minCompanyHeadcount !== undefined ||
+        maxCompanyHeadcount !== undefined
+      ) {
+        const range: { min?: number; max?: number } = {};
+        if (minCompanyHeadcount !== undefined) range.min = minCompanyHeadcount;
+        if (maxCompanyHeadcount !== undefined) range.max = maxCompanyHeadcount;
+        fullEnrichParams.current_company_headcounts = [range];
+      }
+      if (cursor) fullEnrichParams.search_after = cursor;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const feResult = await new FullEnrichBubble(
+        fullEnrichParams as any,
+        this.context
+      ).action();
+
+      if (!feResult.success) {
+        return this.createErrorResult(
+          feResult.error || 'FullEnrich people search failed'
+        );
+      }
+
+      const data = feResult.data as {
+        people?: Array<Record<string, unknown>>;
+        metadata?: {
+          total: number;
+          offset?: number;
+          search_after?: string;
+        };
+      };
+
+      const people: PersonResult[] = (data.people ?? []).map((p) =>
+        this.transformFullEnrichPerson(p)
+      );
+
+      return {
+        people,
+        totalCount: data.metadata?.total ?? people.length,
+        nextCursor: data.metadata?.search_after,
+        success: true,
+        error: '',
+      };
+    } catch (error) {
+      return this.createErrorResult(
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      );
+    }
+  }
+
+  /**
+   * Normalize a FullEnrich person record to the shared PersonResult shape.
+   */
+  private transformFullEnrichPerson(p: Record<string, unknown>): PersonResult {
+    // Extract a string URL from FullEnrich's social-profile object shape:
+    //   { linkedin: { id, url, handle, ... } }  → url
+    //   or sometimes a bare string
+    const extractSocialUrl = (
+      profiles: unknown,
+      key: 'linkedin' | 'twitter'
+    ): string | null => {
+      if (!profiles || typeof profiles !== 'object') return null;
+      const entry = (profiles as Record<string, unknown>)[key];
+      if (typeof entry === 'string') return entry;
+      if (entry && typeof entry === 'object') {
+        const url = (entry as Record<string, unknown>).url;
+        if (typeof url === 'string') return url;
+        const handle = (entry as Record<string, unknown>).handle;
+        if (typeof handle === 'string') return handle;
+      }
+      return null;
+    };
+
+    const fullName =
+      (p.full_name as string | undefined) ??
+      [p.first_name as string | undefined, p.last_name as string | undefined]
+        .filter(Boolean)
+        .join(' ');
+
+    const employment = (p.employment ?? {}) as Record<string, unknown>;
+    const current = (employment.current ?? {}) as Record<string, unknown>;
+    const allEmployments = Array.isArray(employment.all)
+      ? (employment.all as Array<Record<string, unknown>>)
+      : [];
+
+    const social = (p.social_profiles ?? {}) as Record<string, unknown>;
+    const loc = (p.location ?? {}) as Record<string, unknown>;
+
+    // Coerce arbitrary date-ish input to string|number|null.
+    const toDate = (v: unknown): string | number | null => {
+      if (typeof v === 'string' || typeof v === 'number') return v;
+      return null;
+    };
+
+    const mapCurrentEmployer = (e: Record<string, unknown>) => {
+      const company = (e.company ?? {}) as Record<string, unknown>;
+      const companySocial = (company.social_profiles ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const industryObj = company.industry as
+        | Record<string, unknown>
+        | undefined;
+      const mainIndustry =
+        industryObj && typeof industryObj === 'object'
+          ? (industryObj.main_industry as string | undefined)
+          : undefined;
+      return {
+        title: (e.title as string | undefined) ?? null,
+        companyName:
+          (company.name as string | undefined) ??
+          (e.company_name as string | undefined) ??
+          null,
+        companyLinkedinUrl: extractSocialUrl(companySocial, 'linkedin'),
+        companyDomainUrl:
+          (company.domain as string | undefined) ??
+          (e.company_domain as string | undefined) ??
+          null,
+        seniorityLevel: (e.seniority as string | undefined) ?? null,
+        functionCategory: Array.isArray(e.job_functions)
+          ? (((e.job_functions as Array<Record<string, unknown>>)[0]
+              ?.function as string | undefined) ?? null)
+          : null,
+        startDate: toDate(e.start_at ?? e.start_date),
+        yearsAtCompany: null,
+        companyHeadcount: (company.headcount as number | undefined) ?? null,
+        companyIndustries: mainIndustry ? [mainIndustry] : null,
+      };
+    };
+
+    const mapPastEmployer = (e: Record<string, unknown>) => {
+      const company = (e.company ?? {}) as Record<string, unknown>;
+      return {
+        title: (e.title as string | undefined) ?? null,
+        companyName:
+          (company.name as string | undefined) ??
+          (e.company_name as string | undefined) ??
+          null,
+        startDate: toDate(e.start_at ?? e.start_date),
+        endDate: toDate(e.end_at ?? e.end_date),
+      };
+    };
+
+    const currentEmployers = allEmployments
+      .filter((e) => e.is_current === true)
+      .map(mapCurrentEmployer);
+    const pastEmployers = allEmployments
+      .filter((e) => e.is_current !== true)
+      .map(mapPastEmployer);
+
+    // If employment.current has data but wasn't in employment.all with is_current,
+    // prepend it to currentEmployers.
+    if (Object.keys(current).length > 0 && currentEmployers.length === 0) {
+      currentEmployers.push(mapCurrentEmployer(current));
+    }
+
+    const education = Array.isArray(p.educations)
+      ? (p.educations as Array<Record<string, unknown>>).map((e) => ({
+          instituteName: (e.school_name as string | undefined) ?? null,
+          degreeName: (e.degree as string | undefined) ?? null,
+          fieldOfStudy: (e.field_of_study as string | undefined) ?? null,
+        }))
+      : null;
+
+    const skills = Array.isArray(p.skills)
+      ? ((p.skills as unknown[]).filter(
+          (s) => typeof s === 'string'
+        ) as string[])
+      : null;
+
+    const languages = Array.isArray(p.languages)
+      ? ((p.languages as unknown[]).filter(
+          (l) => typeof l === 'string'
+        ) as string[])
+      : null;
+
+    return {
+      name: fullName || null,
+      title: (current.title as string | undefined) ?? null,
+      headline: (p.headline as string | undefined) ?? null,
+      linkedinUrl: extractSocialUrl(social, 'linkedin'),
+      profilePictureUrl: (p.profile_picture_url as string | undefined) ?? null,
+      emails: [],
+      twitterHandle: extractSocialUrl(social, 'twitter'),
+      websites: null,
+      enrichedWorkEmail: null,
+      enrichedPersonalEmail: null,
+      enrichedWorkEmails: null,
+      enrichedPersonalEmails: null,
+      seniorityLevel: (current.seniority as string | undefined) ?? null,
+      yearsOfExperience: (p.years_of_experience as number | undefined) ?? null,
+      recentlyChangedJobs: null,
+      location:
+        (loc.raw as string | undefined) ??
+        (loc.full as string | undefined) ??
+        ([loc.city, loc.region, loc.country]
+          .filter((v) => typeof v === 'string')
+          .join(', ') ||
+          null),
+      locationCity: (loc.city as string | undefined) ?? null,
+      locationCountry: (loc.country as string | undefined) ?? null,
+      skills,
+      languages,
+      summary: (p.summary as string | undefined) ?? null,
+      numConnections: null,
+      currentEmployers: currentEmployers.length > 0 ? currentEmployers : null,
+      pastEmployers: pastEmployers.length > 0 ? pastEmployers : null,
+      education,
+    } as PersonResult;
   }
 
   /**

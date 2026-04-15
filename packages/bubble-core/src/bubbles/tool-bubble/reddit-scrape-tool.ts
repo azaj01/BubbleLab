@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ToolBubble } from '../../types/tool-bubble-class.js';
 import type { BubbleContext } from '../../types/bubble.js';
 import { CredentialType, type BubbleName } from '@bubblelab/shared-schemas';
+import { HttpBubble } from '../service-bubble/http.js';
 
 // Reddit post structure schema
 const RedditPostSchema = z.object({
@@ -352,62 +353,37 @@ export class RedditScrapeTool extends ToolBubble<
   }
 
   /**
-   * Fetch data from Reddit's JSON API
+   * Fetch data from Reddit's JSON API via HttpBubble (wall-clock timeout via AbortController).
    */
   private async fetchRedditData(url: string): Promise<any> {
-    const https = await import('https');
+    const result = await new HttpBubble({
+      url,
+      method: 'GET',
+      headers: {
+        'User-Agent': this.getRandomUserAgent(),
+      },
+      timeout: 15000,
+      followRedirects: true,
+    }).action();
 
-    return new Promise((resolve, reject) => {
-      const request = https.get(
-        url,
-        {
-          headers: {
-            'User-Agent': this.getRandomUserAgent(),
-          },
-        },
-        (response) => {
-          let data = '';
-
-          response.on('data', (chunk) => {
-            data += chunk;
-          });
-
-          response.on('end', () => {
-            if (response.statusCode === 200) {
-              try {
-                const jsonData = JSON.parse(data);
-                resolve(jsonData);
-              } catch (parseError) {
-                reject(
-                  new Error(
-                    `Failed to parse Reddit JSON response: ${parseError}`
-                  )
-                );
-              }
-            } else {
-              reject(
-                new Error(
-                  `Reddit API returned status ${response.statusCode}: ${response.statusMessage}`
-                )
-              );
-            }
-          });
-        }
+    if (!result.success || !result.data) {
+      throw new Error(
+        `Network error: ${result.error ?? 'HttpBubble returned no data'}`
       );
+    }
 
-      request.on('error', (error) => {
-        reject(new Error(`Network error: ${error.message}`));
-      });
+    const { status, statusText, json, body } = result.data;
+    if (status !== 200) {
+      throw new Error(`Reddit API returned status ${status}: ${statusText}`);
+    }
 
-      request.setTimeout(15000, () => {
-        request.destroy();
-        reject(
-          new Error(
-            'Request timeout - Reddit API did not respond within 15 seconds'
-          )
-        );
-      });
-    });
+    if (json !== undefined) return json;
+
+    try {
+      return JSON.parse(body);
+    } catch (parseError) {
+      throw new Error(`Failed to parse Reddit JSON response: ${parseError}`);
+    }
   }
 
   /**

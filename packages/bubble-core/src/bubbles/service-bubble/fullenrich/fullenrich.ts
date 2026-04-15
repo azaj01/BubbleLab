@@ -13,6 +13,8 @@ import {
   type GetReverseEmailResultParams,
   type GetCreditBalanceParams,
   type CheckApiKeyParams,
+  type PeopleSearchParams,
+  type CompanySearchParams,
 } from './fullenrich.schema.js';
 
 /**
@@ -98,6 +100,7 @@ export class FullEnrichBubble<
   static readonly alias = 'enrich';
 
   private static readonly BASE_URL = 'https://app.fullenrich.com/api/v1';
+  private static readonly BASE_URL_V2 = 'https://app.fullenrich.com/api/v2';
 
   constructor(
     params: T = {
@@ -143,14 +146,19 @@ export class FullEnrichBubble<
   private async makeApiRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' = 'GET',
-    body?: unknown
+    body?: unknown,
+    apiVersion: 'v1' | 'v2' = 'v1'
   ): Promise<T> {
     const credential = this.chooseCredential();
     if (!credential) {
       throw new Error('FullEnrich API key is required');
     }
 
-    const url = `${FullEnrichBubble.BASE_URL}${endpoint}`;
+    const baseUrl =
+      apiVersion === 'v2'
+        ? FullEnrichBubble.BASE_URL_V2
+        : FullEnrichBubble.BASE_URL;
+    const url = `${baseUrl}${endpoint}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${credential}`,
       'Content-Type': 'application/json',
@@ -223,6 +231,12 @@ export class FullEnrichBubble<
             );
           case 'check_api_key':
             return await this.checkApiKey(parsedParams as CheckApiKeyParams);
+          case 'people_search':
+            return await this.peopleSearch(parsedParams as PeopleSearchParams);
+          case 'company_search':
+            return await this.companySearch(
+              parsedParams as CompanySearchParams
+            );
           default:
             throw new Error(`Unsupported operation: ${operation}`);
         }
@@ -531,6 +545,130 @@ export class FullEnrichBubble<
       operation: 'check_api_key',
       success: true,
       workspace_id: response.workspace_id,
+      error: '',
+    };
+  }
+
+  /**
+   * Search for people matching filters via v2 /people/search.
+   */
+  private async peopleSearch(
+    params: PeopleSearchParams
+  ): Promise<Extract<FullEnrichResult, { operation: 'people_search' }>> {
+    // Build body — include only non-undefined filter arrays + pagination.
+    const body: Record<string, unknown> = {};
+    const keys: (keyof PeopleSearchParams)[] = [
+      'person_names',
+      'person_locations',
+      'person_skills',
+      'current_position_titles',
+      'current_position_seniority_level',
+      'past_company_names',
+      'current_company_names',
+      'current_company_domains',
+      'current_company_industries',
+      'current_company_headcounts',
+      'offset',
+      'limit',
+      'search_after',
+    ];
+    for (const key of keys) {
+      const value = params[key];
+      if (value !== undefined) body[key] = value;
+    }
+
+    const response = await this.makeApiRequest<{
+      people?: Array<Record<string, unknown>>;
+      metadata?: {
+        total: number;
+        credits?: number;
+        offset?: number;
+        search_after?: string;
+      };
+    }>('/people/search', 'POST', body, 'v2');
+
+    // Track credits used (1 credit per result returned based on FE billing)
+    if (response.metadata?.credits && this.context && this.context.logger) {
+      this.context.logger.logTokenUsage(
+        {
+          usage: response.metadata.credits,
+          service: CredentialType.FULLENRICH_API_KEY,
+          unit: 'per_search_credit',
+        },
+        `FullEnrich people_search: ${response.metadata.credits} credit(s)`,
+        {
+          bubbleName: 'fullenrich',
+          variableId: this.context?.variableId,
+          operationType: 'bubble_execution',
+        }
+      );
+    }
+
+    return {
+      operation: 'people_search',
+      success: true,
+      people: response.people,
+      metadata: response.metadata,
+      error: '',
+    };
+  }
+
+  /**
+   * Search for companies matching filters via v2 /company/search.
+   */
+  private async companySearch(
+    params: CompanySearchParams
+  ): Promise<Extract<FullEnrichResult, { operation: 'company_search' }>> {
+    const body: Record<string, unknown> = {};
+    const keys: (keyof CompanySearchParams)[] = [
+      'names',
+      'domains',
+      'keywords',
+      'industries',
+      'types',
+      'headcounts',
+      'founded_years',
+      'headquarters_locations',
+      'offset',
+      'limit',
+      'search_after',
+    ];
+    for (const key of keys) {
+      const value = params[key];
+      if (value !== undefined) body[key] = value;
+    }
+
+    const response = await this.makeApiRequest<{
+      companies?: Array<Record<string, unknown>>;
+      metadata?: {
+        total: number;
+        credits?: number;
+        offset?: number;
+        search_after?: string;
+      };
+    }>('/company/search', 'POST', body, 'v2');
+
+    if (response.metadata?.credits && this.context && this.context.logger) {
+      this.context.logger.logTokenUsage(
+        {
+          usage: response.metadata.credits,
+          service: CredentialType.FULLENRICH_API_KEY,
+          unit: 'per_search_credit',
+        },
+        `FullEnrich company_search: ${response.metadata.credits} credit(s)`,
+        {
+          bubbleName: 'fullenrich',
+          variableId: this.context?.variableId,
+          operationType: 'bubble_execution',
+        }
+      );
+    }
+
+    return {
+      operation: 'company_search',
+      success: true,
+      companies: response.companies,
+      metadata: response.metadata,
       error: '',
     };
   }

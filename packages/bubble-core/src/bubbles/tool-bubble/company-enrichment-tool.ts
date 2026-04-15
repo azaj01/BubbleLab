@@ -7,6 +7,7 @@ import {
   type PersonProfile,
   type CompanyInfo,
 } from '../service-bubble/crustdata/index.js';
+import { FullEnrichBubble } from '../service-bubble/fullenrich/index.js';
 
 // Contact schema with full profile information
 const ContactSchema = z.object({
@@ -102,6 +103,12 @@ const CompanyInfoOutputSchema = z.object({
 
 // Tool parameters - simple, agent-friendly interface
 const CompanyEnrichmentToolParamsSchema = z.object({
+  provider: z
+    .enum(['crustdata', 'fullenrich'])
+    .default('fullenrich')
+    .describe(
+      "Provider to use. Default: 'fullenrich'. NOTE: FullEnrich's /company/search only returns company metadata — contacts[] will be EMPTY when provider=fullenrich. Use provider='crustdata' to get decision makers/CXOs/founders."
+    ),
   companyIdentifier: z
     .string()
     .min(1)
@@ -113,7 +120,9 @@ const CompanyEnrichmentToolParamsSchema = z.object({
     .max(50)
     .default(10)
     .optional()
-    .describe('Maximum contacts to return (default: 10)'),
+    .describe(
+      'Maximum contacts to return (default: 10). Only applies when provider=crustdata; FullEnrich always returns 0 contacts.'
+    ),
   credentials: z
     .record(z.nativeEnum(CredentialType), z.string())
     .optional()
@@ -220,10 +229,18 @@ export class CompanyEnrichmentTool extends ToolBubble<
   }
 
   async performAction(): Promise<CompanyEnrichmentToolResult> {
+    const { provider } = this.params;
+    if (provider === 'fullenrich') {
+      return this.enrichFullEnrich();
+    }
+    return this.enrichCrustdata();
+  }
+
+  private async enrichCrustdata(): Promise<CompanyEnrichmentToolResult> {
     const credentials = this.params?.credentials;
     if (!credentials || !credentials[CredentialType.CRUSTDATA_API_KEY]) {
       return this.createErrorResult(
-        'Company enrichment requires CRUSTDATA_API_KEY credential. Please configure it in your settings.'
+        'Company enrichment via Crustdata requires CRUSTDATA_API_KEY credential. Please configure it in your settings.'
       );
     }
 
@@ -299,6 +316,116 @@ export class CompanyEnrichmentTool extends ToolBubble<
         contacts,
         company,
         totalContacts: contacts.length,
+        success: true,
+        error: '',
+      };
+    } catch (error) {
+      return this.createErrorResult(
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      );
+    }
+  }
+
+  /**
+   * Enrich via FullEnrich v2 /company/search. Returns company metadata only;
+   * contacts[] is always empty because FullEnrich's search endpoint does not
+   * return contacts. Use provider='crustdata' for contacts.
+   */
+  private async enrichFullEnrich(): Promise<CompanyEnrichmentToolResult> {
+    const credentials = this.params?.credentials;
+    if (!credentials || !credentials[CredentialType.FULLENRICH_API_KEY]) {
+      return this.createErrorResult(
+        'Company enrichment via FullEnrich requires FULLENRICH_API_KEY credential. Please configure it in your settings.'
+      );
+    }
+
+    try {
+      const { companyIdentifier } = this.params;
+      const identifierType = this.detectIdentifierType(companyIdentifier);
+
+      // Build FullEnrich search body based on identifier type.
+      // FullEnrich doesn't support LinkedIn URL search directly — fall back
+      // to parsing the slug as a name filter.
+      const params: Record<string, unknown> = {
+        operation: 'company_search',
+        limit: 1,
+        credentials,
+      };
+
+      if (identifierType === 'domain') {
+        params.domains = [{ value: companyIdentifier }];
+      } else if (identifierType === 'linkedin') {
+        // Extract slug: linkedin.com/company/<slug>/... → <slug>
+        const match = companyIdentifier.match(
+          /linkedin\.com\/company\/([^/?]+)/
+        );
+        const slug = match?.[1] ?? companyIdentifier;
+        params.names = [{ value: slug }];
+      } else {
+        params.names = [{ value: companyIdentifier }];
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const feResult = await new FullEnrichBubble(
+        params as any,
+        this.context
+      ).action();
+
+      if (!feResult.success) {
+        return this.createErrorResult(
+          feResult.error || 'FullEnrich company search failed'
+        );
+      }
+
+      const data = feResult.data as {
+        companies?: Array<Record<string, unknown>>;
+      };
+      const company = data.companies?.[0];
+
+      if (!company) {
+        return this.createErrorResult(
+          `No company found matching "${companyIdentifier}" via FullEnrich.`
+        );
+      }
+
+      const social = (company.social_profiles ?? {}) as Record<string, unknown>;
+      const linkedinSocial = (social.linkedin ?? {}) as Record<string, unknown>;
+      const locations = (company.locations ?? {}) as Record<string, unknown>;
+      const hq = (locations.headquarters ?? {}) as Record<string, unknown>;
+      // FullEnrich industry is { main_industry: "..." } — extract string.
+      const industryRaw = company.industry;
+      const industry =
+        typeof industryRaw === 'string'
+          ? industryRaw
+          : typeof industryRaw === 'object' && industryRaw !== null
+            ? (((industryRaw as Record<string, unknown>).main_industry as
+                | string
+                | undefined) ?? null)
+            : null;
+
+      const companyInfo: z.output<typeof CompanyInfoOutputSchema> = {
+        name: (company.name as string | undefined) ?? null,
+        linkedinUrl:
+          (linkedinSocial.url as string | undefined) ??
+          (typeof social.linkedin === 'string'
+            ? (social.linkedin as string)
+            : undefined) ??
+          null,
+        website: (company.domain as string | undefined) ?? null,
+        industry,
+        description: (company.description as string | undefined) ?? null,
+        headcount: (company.headcount as number | undefined) ?? null,
+        hqCity: (hq.city as string | undefined) ?? null,
+        hqCountry: (hq.country as string | undefined) ?? null,
+        yearFounded: (company.year_founded as number | undefined) ?? null,
+        fundingStage: null,
+        totalFunding: null,
+      };
+
+      return {
+        contacts: [],
+        company: companyInfo,
+        totalContacts: 0,
         success: true,
         error: '',
       };

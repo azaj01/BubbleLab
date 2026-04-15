@@ -240,6 +240,79 @@ export const ContactToEnrichSchema = z
   .describe('Contact information to enrich');
 
 // ============================================================================
+// SEARCH SHARED SCHEMAS
+// ============================================================================
+
+/**
+ * FullEnrich filter value (single-value filter entry).
+ * Used across many categorical filters in people/company search.
+ */
+const SearchFilterValueSchema = z.object({
+  value: z.string(),
+});
+
+/**
+ * FullEnrich range filter (min/max). At least one of min/max must be set.
+ */
+const SearchRangeSchema = z.object({
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
+/**
+ * Metadata returned by both people_search and company_search responses.
+ */
+const SearchMetadataSchema = z.object({
+  total: z.number().describe('Total matches available'),
+  credits: z.number().optional().describe('Credits consumed'),
+  offset: z.number().optional().describe('Offset of returned results'),
+  search_after: z
+    .string()
+    .optional()
+    .describe('Cursor to fetch next page (for results beyond 10,000)'),
+});
+
+/**
+ * Person record from /people/search.
+ * Schema kept flexible (`z.unknown()` for nested sub-objects) since FullEnrich
+ * returns deeply nested data whose full shape is not fully documented.
+ */
+const FullEnrichPersonSchema = z
+  .object({
+    id: z.string().optional(),
+    full_name: z.string().optional(),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    location: z.unknown().optional(),
+    social_profiles: z.unknown().optional(),
+    educations: z.array(z.unknown()).optional(),
+    languages: z.array(z.unknown()).optional(),
+    skills: z.array(z.unknown()).optional(),
+    employment: z.unknown().optional(),
+  })
+  .passthrough();
+
+/**
+ * Company record from /company/search.
+ */
+const FullEnrichCompanySchema = z
+  .object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    domain: z.string().optional(),
+    description: z.string().optional(),
+    year_founded: z.number().optional(),
+    headcount: z.number().optional(),
+    headcount_range: z.string().optional(),
+    company_type: z.string().optional(),
+    locations: z.unknown().optional(),
+    social_profiles: z.unknown().optional(),
+    specialties: z.array(z.unknown()).optional(),
+    industry: z.unknown().optional(),
+  })
+  .passthrough();
+
+// ============================================================================
 // PARAMETERS SCHEMA (Discriminated Union)
 // ============================================================================
 
@@ -373,6 +446,62 @@ export const FullEnrichParamsSchema = z.discriminatedUnion('operation', [
         'Object mapping credential types to values (injected at runtime)'
       ),
   }),
+
+  // People Search (v2)
+  z.object({
+    operation: z
+      .literal('people_search')
+      .describe(
+        'Search for people matching filters via FullEnrich v2 /people/search. Within each filter category OR, across categories AND.'
+      ),
+    person_names: z.array(SearchFilterValueSchema).optional(),
+    person_locations: z.array(SearchFilterValueSchema).optional(),
+    person_skills: z.array(SearchFilterValueSchema).optional(),
+    current_position_titles: z.array(SearchFilterValueSchema).optional(),
+    current_position_seniority_level: z
+      .array(SearchFilterValueSchema)
+      .optional(),
+    past_company_names: z.array(SearchFilterValueSchema).optional(),
+    current_company_names: z.array(SearchFilterValueSchema).optional(),
+    current_company_domains: z.array(SearchFilterValueSchema).optional(),
+    current_company_industries: z.array(SearchFilterValueSchema).optional(),
+    current_company_headcounts: z.array(SearchRangeSchema).optional(),
+    offset: z.number().min(0).max(10000).optional(),
+    limit: z.number().min(1).max(100).default(10),
+    search_after: z.string().optional(),
+    credentials: z
+      .record(z.nativeEnum(CredentialType), z.string())
+      .optional()
+      .describe(
+        'Object mapping credential types to values (injected at runtime)'
+      ),
+  }),
+
+  // Company Search (v2)
+  z.object({
+    operation: z
+      .literal('company_search')
+      .describe(
+        'Search for companies matching filters via FullEnrich v2 /company/search.'
+      ),
+    names: z.array(SearchFilterValueSchema).optional(),
+    domains: z.array(SearchFilterValueSchema).optional(),
+    keywords: z.array(SearchFilterValueSchema).optional(),
+    industries: z.array(SearchFilterValueSchema).optional(),
+    types: z.array(SearchFilterValueSchema).optional(),
+    headcounts: z.array(SearchRangeSchema).optional(),
+    founded_years: z.array(SearchRangeSchema).optional(),
+    headquarters_locations: z.array(SearchFilterValueSchema).optional(),
+    offset: z.number().min(0).max(10000).optional(),
+    limit: z.number().min(1).max(100).default(10),
+    search_after: z.string().optional(),
+    credentials: z
+      .record(z.nativeEnum(CredentialType), z.string())
+      .optional()
+      .describe(
+        'Object mapping credential types to values (injected at runtime)'
+      ),
+  }),
 ]);
 
 // ============================================================================
@@ -459,6 +588,30 @@ export const FullEnrichResultSchema = z.discriminatedUnion('operation', [
       .describe('Workspace ID if key is valid'),
     error: z.string().describe('Error message if operation failed'),
   }),
+
+  // People Search Result
+  z.object({
+    operation: z.literal('people_search'),
+    success: z.boolean().describe('Whether the operation was successful'),
+    people: z
+      .array(FullEnrichPersonSchema)
+      .optional()
+      .describe('People matching the search filters'),
+    metadata: SearchMetadataSchema.optional(),
+    error: z.string().describe('Error message if operation failed'),
+  }),
+
+  // Company Search Result
+  z.object({
+    operation: z.literal('company_search'),
+    success: z.boolean().describe('Whether the operation was successful'),
+    companies: z
+      .array(FullEnrichCompanySchema)
+      .optional()
+      .describe('Companies matching the search filters'),
+    metadata: SearchMetadataSchema.optional(),
+    error: z.string().describe('Error message if operation failed'),
+  }),
 ]);
 
 // ============================================================================
@@ -498,4 +651,12 @@ export type GetCreditBalanceParams = Extract<
 export type CheckApiKeyParams = Extract<
   FullEnrichParams,
   { operation: 'check_api_key' }
+>;
+export type PeopleSearchParams = Extract<
+  FullEnrichParams,
+  { operation: 'people_search' }
+>;
+export type CompanySearchParams = Extract<
+  FullEnrichParams,
+  { operation: 'company_search' }
 >;

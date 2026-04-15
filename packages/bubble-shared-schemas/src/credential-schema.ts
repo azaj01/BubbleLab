@@ -2682,7 +2682,10 @@ export const BUBBLE_CREDENTIAL_OPTIONS: Record<
     ...BROWSERBASE_OPTIONAL_CREDENTIALS,
   ],
   crustdata: [CredentialType.CRUSTDATA_API_KEY],
-  'company-enrichment-tool': [CredentialType.CRUSTDATA_API_KEY],
+  'company-enrichment-tool': [
+    CredentialType.CRUSTDATA_API_KEY,
+    CredentialType.FULLENRICH_API_KEY,
+  ],
   'people-search-tool': [
     CredentialType.CRUSTDATA_API_KEY,
     CredentialType.FULLENRICH_API_KEY,

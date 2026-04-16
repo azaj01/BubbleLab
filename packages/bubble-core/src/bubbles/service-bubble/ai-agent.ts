@@ -798,10 +798,10 @@ export class AIAgentBubble extends ServiceBubble<
     if (!isCapabilityAgent && !this.params.conversationHistory?.length) {
       const convHistory =
         (execMeta?.triggerConversationHistory as
-          | Array<{ role: 'user' | 'assistant'; content: string }>
+          | ConversationMessage[]
           | undefined) ??
         (this.context?.triggerConversationHistory as
-          | Array<{ role: 'user' | 'assistant'; content: string }>
+          | ConversationMessage[]
           | undefined);
       if (convHistory?.length) {
         this.params.conversationHistory = convHistory;
@@ -3344,7 +3344,27 @@ export class AIAgentBubble extends ServiceBubble<
               initialMessages.push(new HumanMessage(historyMsg.content));
               break;
             case 'assistant':
-              initialMessages.push(new AIMessage(historyMsg.content));
+              if (historyMsg.toolCalls?.length) {
+                initialMessages.push(
+                  new AIMessage({
+                    content: historyMsg.content || '',
+                    tool_calls: historyMsg.toolCalls.map(
+                      (tc: {
+                        id: string;
+                        name: string;
+                        args: Record<string, unknown>;
+                      }) => ({
+                        name: tc.name,
+                        args: tc.args,
+                        id: tc.id,
+                        type: 'tool_call' as const,
+                      })
+                    ),
+                  })
+                );
+              } else {
+                initialMessages.push(new AIMessage(historyMsg.content));
+              }
               break;
             case 'tool':
               // Tool messages require a tool_call_id

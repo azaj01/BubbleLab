@@ -246,9 +246,12 @@ export const ContactToEnrichSchema = z
 /**
  * FullEnrich filter value (single-value filter entry).
  * Used across many categorical filters in people/company search.
+ * exclude=true inverts the filter. exact_match=true disables fuzzy matching.
  */
 const SearchFilterValueSchema = z.object({
   value: z.string(),
+  exclude: z.boolean().optional(),
+  exact_match: z.boolean().optional(),
 });
 
 /**
@@ -257,6 +260,7 @@ const SearchFilterValueSchema = z.object({
 const SearchRangeSchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
+  exclude: z.boolean().optional(),
 });
 
 /**
@@ -273,9 +277,99 @@ const SearchMetadataSchema = z.object({
 });
 
 /**
- * Person record from /people/search.
- * Schema kept flexible (`z.unknown()` for nested sub-objects) since FullEnrich
- * returns deeply nested data whose full shape is not fully documented.
+ * Person location from /people/search (per FullEnrich v2 OpenAPI spec).
+ */
+const PersonLocationSchema = z.object({
+  city: z.string().optional(),
+  region: z.string().optional(),
+  country: z.string().optional(),
+  country_code: z.string().optional(),
+});
+
+/**
+ * LinkedIn social profile entry (per FullEnrich v2 OpenAPI spec).
+ * social_profiles is an object keyed by platform name, not an array.
+ */
+const PersonSocialProfilesSchema = z.object({
+  linkedin: z
+    .object({
+      url: z.string().optional().describe('Full LinkedIn profile URL'),
+      handle: z.string().optional().describe('LinkedIn username/handle'),
+      connection_count: z.number().optional().describe('Number of connections'),
+    })
+    .optional(),
+});
+
+/**
+ * Company details nested inside an employment entry.
+ */
+const EmploymentCompanySchema = z.object({
+  id: z.string().optional(),
+  name: z.string().optional().describe('Company name'),
+  domain: z.string().optional().describe('Company domain'),
+  description: z.string().optional(),
+  year_founded: z.number().optional(),
+  headcount: z.number().optional(),
+  headcount_range: z
+    .string()
+    .optional()
+    .describe('Employee count range e.g. "51-200"'),
+  company_type: z.string().optional().describe('e.g. "Privately Held"'),
+  industry: z.object({ main_industry: z.string().optional() }).optional(),
+});
+
+/**
+ * Single employment record (current or historical).
+ */
+const EmploymentEntrySchema = z.object({
+  title: z.string().optional().describe('Job title'),
+  seniority: z.string().optional(),
+  description: z.string().optional(),
+  company: EmploymentCompanySchema.optional(),
+  is_current: z.boolean().optional(),
+  start_at: z.string().optional().describe('ISO 8601 start date'),
+  end_at: z
+    .string()
+    .optional()
+    .describe('ISO 8601 end date (absent if current)'),
+});
+
+/**
+ * Employment field on a person: { current, all[] } (per FullEnrich v2 OpenAPI spec).
+ */
+const PersonEmploymentSchema = z.object({
+  current: EmploymentEntrySchema.optional().describe('Current position'),
+  all: z
+    .array(EmploymentEntrySchema)
+    .optional()
+    .describe('Full employment history'),
+});
+
+/**
+ * Education record.
+ */
+const PersonEducationSchema = z.object({
+  school_name: z.string().optional(),
+  degree: z.string().optional(),
+  start_at: z.string().optional(),
+  end_at: z.string().optional(),
+});
+
+/**
+ * Language record.
+ */
+const PersonLanguageSchema = z.object({
+  language: z.string().optional(),
+  proficiency: z
+    .string()
+    .optional()
+    .describe(
+      'e.g. NATIVE_OR_BILINGUAL, FULL_PROFESSIONAL, PROFESSIONAL_WORKING'
+    ),
+});
+
+/**
+ * Person record from /people/search (fully typed per FullEnrich v2 OpenAPI spec).
  */
 const FullEnrichPersonSchema = z
   .object({
@@ -283,12 +377,12 @@ const FullEnrichPersonSchema = z
     full_name: z.string().optional(),
     first_name: z.string().optional(),
     last_name: z.string().optional(),
-    location: z.unknown().optional(),
-    social_profiles: z.unknown().optional(),
-    educations: z.array(z.unknown()).optional(),
-    languages: z.array(z.unknown()).optional(),
-    skills: z.array(z.unknown()).optional(),
-    employment: z.unknown().optional(),
+    location: PersonLocationSchema.optional(),
+    social_profiles: PersonSocialProfilesSchema.optional(),
+    educations: z.array(PersonEducationSchema).optional(),
+    languages: z.array(PersonLanguageSchema).optional(),
+    skills: z.array(z.string()).optional(),
+    employment: PersonEmploymentSchema.optional(),
   })
   .passthrough();
 
@@ -454,21 +548,93 @@ export const FullEnrichParamsSchema = z.discriminatedUnion('operation', [
       .describe(
         'Search for people matching filters via FullEnrich v2 /people/search. Within each filter category OR, across categories AND.'
       ),
+    // Person filters
     person_names: z.array(SearchFilterValueSchema).optional(),
-    person_locations: z.array(SearchFilterValueSchema).optional(),
+    person_locations: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe(
+        'Filter by city, region, or country (e.g. "United States", "California")'
+      ),
     person_skills: z.array(SearchFilterValueSchema).optional(),
+    person_languages: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe('Filter by languages spoken (e.g. "English", "French")'),
+    person_universities: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe('Filter by universities attended'),
+    person_linkedin_urls: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe('Look up specific people by LinkedIn URL'),
+    // Current position filters
     current_position_titles: z.array(SearchFilterValueSchema).optional(),
     current_position_seniority_level: z
       .array(SearchFilterValueSchema)
-      .optional(),
-    past_company_names: z.array(SearchFilterValueSchema).optional(),
+      .optional()
+      .describe(
+        'Seniority levels: Owner, Founder, C-level, Partner, VP, Head, Director, Senior, Manager, Associate, etc.'
+      ),
+    current_position_job_functions: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe(
+        'Job function categories (e.g. "Operations", "Finance", "Sales")'
+      ),
+    current_position_sub_functions: z.array(SearchFilterValueSchema).optional(),
+    current_position_years_in: z
+      .array(SearchRangeSchema)
+      .optional()
+      .describe(
+        'Years in current role (e.g. { min: 0, max: 2 } for new in role)'
+      ),
+    past_position_titles: z.array(SearchFilterValueSchema).optional(),
+    // Current company filters
     current_company_names: z.array(SearchFilterValueSchema).optional(),
     current_company_domains: z.array(SearchFilterValueSchema).optional(),
-    current_company_industries: z.array(SearchFilterValueSchema).optional(),
-    current_company_headcounts: z.array(SearchRangeSchema).optional(),
+    current_company_industries: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe('e.g. "Financial Services", "Software Development", "Fintech"'),
+    current_company_headcounts: z
+      .array(SearchRangeSchema)
+      .optional()
+      .describe('Employee count range (e.g. { min: 50, max: 500 })'),
+    current_company_headquarters: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe('HQ city or country (e.g. "San Francisco", "United States")'),
+    current_company_types: z
+      .array(SearchFilterValueSchema)
+      .optional()
+      .describe('e.g. "Privately Held", "Public Company", "Nonprofit"'),
+    current_company_founded_years: z
+      .array(SearchRangeSchema)
+      .optional()
+      .describe('Year company was founded (e.g. { min: 2015, max: 2022 })'),
+    current_company_specialties: z.array(SearchFilterValueSchema).optional(),
+    current_company_years_at: z
+      .array(SearchRangeSchema)
+      .optional()
+      .describe('Years at current company (e.g. { min: 1, max: 3 })'),
+    current_company_days_since_last_job_change: z
+      .array(SearchRangeSchema)
+      .optional()
+      .describe('Days since last job change — useful for targeting new hires'),
+    // Past company filters
+    past_company_names: z.array(SearchFilterValueSchema).optional(),
+    past_company_domains: z.array(SearchFilterValueSchema).optional(),
+    // Pagination
     offset: z.number().min(0).max(10000).optional(),
     limit: z.number().min(1).max(100).default(10),
-    search_after: z.string().optional(),
+    search_after: z
+      .string()
+      .optional()
+      .describe(
+        'Cursor from previous response for paginating beyond 10,000 results'
+      ),
     credentials: z
       .record(z.nativeEnum(CredentialType), z.string())
       .optional()

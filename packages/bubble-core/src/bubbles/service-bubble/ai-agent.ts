@@ -2723,6 +2723,50 @@ export class AIAgentBubble extends ServiceBubble<
                     });
                   }
                   if (isMaster) {
+                    // Surface intermediate text blocks — i.e., text the model
+                    // emitted alongside tool_use in this turn. The final turn's
+                    // text still flows through agent_response, so only emit
+                    // here when this turn also carries tool calls (otherwise
+                    // we'd double-render the final message).
+                    const gen = output.generations?.[0]?.[0] as
+                      | {
+                          message?: {
+                            content?: unknown;
+                            tool_calls?: unknown[];
+                          };
+                        }
+                      | undefined;
+                    const turnMsg = gen?.message;
+                    const hasToolCalls =
+                      Array.isArray(turnMsg?.tool_calls) &&
+                      (turnMsg!.tool_calls as unknown[]).length > 0;
+                    if (hasToolCalls && turnMsg?.content) {
+                      const blocks = Array.isArray(turnMsg.content)
+                        ? turnMsg.content
+                        : [turnMsg.content];
+                      for (const block of blocks) {
+                        let text: string | undefined;
+                        if (typeof block === 'string') {
+                          text = block;
+                        } else if (
+                          block &&
+                          typeof block === 'object' &&
+                          'type' in block &&
+                          (block as { type?: string }).type === 'text' &&
+                          'text' in block &&
+                          typeof (block as { text?: unknown }).text === 'string'
+                        ) {
+                          text = (block as { text: string }).text;
+                        }
+                        if (text && text.trim().length > 0) {
+                          await this.streamingCallback?.({
+                            type: 'text_block_complete',
+                            data: { content: text, messageId },
+                          });
+                        }
+                      }
+                    }
+
                     const content = formatFinalResponse(
                       generationsToMessageContent(output.generations.flat()),
                       this.params.model.model

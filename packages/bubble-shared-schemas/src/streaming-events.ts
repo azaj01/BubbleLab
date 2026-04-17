@@ -93,6 +93,17 @@ export type StreamingEvent =
   | { type: 'token'; data: { content: string; messageId: string } }
   | { type: 'think'; data: { content: string; messageId: string } }
   | {
+      /**
+       * Emitted when an intermediate LLM turn finalizes a text content block
+       * alongside tool_use blocks. These blocks are otherwise invisible to the
+       * frontend — raw tokens are dropped as noisy, and `agent_response` only
+       * carries the final turn's text. Emit one event per text block so the
+       * UI can render each as its own assistant message between tool cards.
+       */
+      type: 'text_block_complete';
+      data: { content: string; messageId: string };
+    }
+  | {
       type: 'llm_complete';
       data: {
         messageId: string;

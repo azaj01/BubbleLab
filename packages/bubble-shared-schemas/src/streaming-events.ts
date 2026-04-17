@@ -107,6 +107,9 @@ export type StreamingEvent =
         input: unknown;
         callId: string;
         variableId?: number;
+        /** Name of the agent that emitted the call. Empty/undefined for the
+         * master agent; "Capability Agent: <id>" for subagents. */
+        agentName?: string;
       };
     }
   | {
@@ -118,6 +121,9 @@ export type StreamingEvent =
         duration: number;
         callId: string;
         variableId?: number;
+        /** Name of the agent that emitted the call. Empty/undefined for the
+         * master agent; "Capability Agent: <id>" for subagents. */
+        agentName?: string;
       };
     }
   | { type: 'iteration_start'; data: { iteration: number } }

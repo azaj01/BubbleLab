@@ -2497,6 +2497,12 @@ Comprehensive Slack integration for messaging and workspace management.
     // Resolve channel name to ID if needed
     const resolvedChannel = await this.resolveChannelId(channel);
 
+    // Detect markdown in text and convert to blocks if no blocks are already provided
+    let finalBlocks = blocks;
+    if (text && !blocks && containsMarkdown(text)) {
+      finalBlocks = markdownToBlocks(text) as unknown as typeof blocks;
+    }
+
     const body: Record<string, unknown> = {
       channel: resolvedChannel,
       text,
@@ -2507,7 +2513,7 @@ Comprehensive Slack integration for messaging and workspace management.
     if (icon_emoji) body.icon_emoji = icon_emoji;
     if (icon_url) body.icon_url = icon_url;
     if (thread_ts) body.thread_ts = thread_ts;
-    if (blocks) body.blocks = blocks;
+    if (finalBlocks) body.blocks = finalBlocks;
     if (unfurl_links !== undefined) body.unfurl_links = unfurl_links;
     if (unfurl_media !== undefined) body.unfurl_media = unfurl_media;
 

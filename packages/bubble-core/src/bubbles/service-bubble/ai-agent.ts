@@ -563,7 +563,13 @@ export class AIAgentBubble extends ServiceBubble<
     this.beforeToolCallHook = params.beforeToolCall;
     this.afterToolCallHook = params.afterToolCall;
     this.afterLLMCallHook = params.afterLLMCall;
-    this.streamingCallback = params.streamingCallback;
+    // Use explicit param if provided (Salad /ai route), otherwise check
+    // execution metadata (Pearl flow execution injects it there).
+    this.streamingCallback =
+      params.streamingCallback ??
+      (context?.executionMeta?._agentStreamCallback as
+        | StreamingCallback
+        | undefined);
     this.factory = new BubbleFactory();
   }
 
@@ -2285,6 +2291,7 @@ export class AIAgentBubble extends ServiceBubble<
             input: toolCall.args,
             callId: toolCall.id!,
             variableId: this.context?.variableId,
+            agentName: this.params.name,
           },
         });
 
@@ -2304,6 +2311,7 @@ export class AIAgentBubble extends ServiceBubble<
             output: { error: errorContent },
             duration: Date.now() - startTime,
             variableId: this.context?.variableId,
+            agentName: this.params.name,
           },
         });
 
@@ -2361,6 +2369,7 @@ export class AIAgentBubble extends ServiceBubble<
             input: toolCall.args,
             callId: toolCall.id!,
             variableId: this.context?.variableId,
+            agentName: this.params.name,
           },
         });
 
@@ -2482,6 +2491,7 @@ export class AIAgentBubble extends ServiceBubble<
             output: toolOutput,
             duration: toolDurationMs,
             variableId: this.context?.variableId,
+            agentName: this.params.name,
           },
         });
       } catch (error) {
@@ -2513,6 +2523,7 @@ export class AIAgentBubble extends ServiceBubble<
             output: { error: errorContent },
             duration: Date.now() - startTime,
             variableId: this.context?.variableId,
+            agentName: this.params.name,
           },
         });
 
@@ -2670,6 +2681,11 @@ export class AIAgentBubble extends ServiceBubble<
             callbacks: [
               {
                 handleLLMStart: async (): Promise<void> => {
+                  // Only for master — subagent llm_start events would flush
+                  // the frontend's active tools group erroneously.
+                  if (this.params.name?.startsWith('Capability Agent:')) {
+                    return;
+                  }
                   await this.streamingCallback?.({
                     type: 'llm_start',
                     data: {
@@ -2678,9 +2694,26 @@ export class AIAgentBubble extends ServiceBubble<
                     },
                   });
                 },
+                handleLLMNewToken: async (token: string): Promise<void> => {
+                  if (
+                    token &&
+                    this.streamingCallback &&
+                    !this.params.name?.startsWith('Capability Agent:')
+                  ) {
+                    await this.streamingCallback({
+                      type: 'token',
+                      data: { content: token, messageId },
+                    });
+                  }
+                },
                 handleLLMEnd: async (output): Promise<void> => {
                   extractedThinking = extractThinking(output);
-                  if (extractedThinking) {
+                  // Only emit think/llm_complete for the master agent — subagent
+                  // events would confuse the frontend timeline (they're internal
+                  // to the capability's execution).
+                  const isMaster =
+                    !this.params.name?.startsWith('Capability Agent:');
+                  if (extractedThinking && isMaster) {
                     await this.streamingCallback?.({
                       type: 'think',
                       data: {
@@ -2689,19 +2722,21 @@ export class AIAgentBubble extends ServiceBubble<
                       },
                     });
                   }
-                  const content = formatFinalResponse(
-                    generationsToMessageContent(output.generations.flat()),
-                    this.params.model.model
-                  ).response;
-                  await this.streamingCallback?.({
-                    type: 'llm_complete',
-                    data: {
-                      messageId,
-                      content: content,
-                      totalTokens:
-                        output.llmOutput?.usage_metadata?.total_tokens,
-                    },
-                  });
+                  if (isMaster) {
+                    const content = formatFinalResponse(
+                      generationsToMessageContent(output.generations.flat()),
+                      this.params.model.model
+                    ).response;
+                    await this.streamingCallback?.({
+                      type: 'llm_complete',
+                      data: {
+                        messageId,
+                        content: content,
+                        totalTokens:
+                          output.llmOutput?.usage_metadata?.total_tokens,
+                      },
+                    });
+                  }
                 },
               },
             ],

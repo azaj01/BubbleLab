@@ -1494,11 +1494,13 @@ export class GmailBubble<
   ): Promise<Extract<GmailResult, { operation: 'send_draft' }>> {
     const { draft_id } = params;
 
-    const response = await this.makeGmailApiRequest(
-      `/drafts/${draft_id}/send`,
-      'POST',
-      {}
-    );
+    // Gmail API: POST /drafts/send with the draft id in the body.
+    // There is no /drafts/{id}/send route — hitting it returns a generic
+    // Google HTML 404 (not a Gmail API JSON error) because the request
+    // never reaches a Gmail handler.
+    const response = await this.makeGmailApiRequest('/drafts/send', 'POST', {
+      id: draft_id,
+    });
 
     return {
       operation: 'send_draft',

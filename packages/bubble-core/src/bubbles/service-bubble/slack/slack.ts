@@ -2414,8 +2414,17 @@ Comprehensive Slack integration for messaging and workspace management.
     const { channel, ts, latest, oldest, inclusive, limit, cursor } =
       parsed as Extract<SlackParamsParsed, { operation: 'get_thread_replies' }>;
 
-    // Resolve channel name to ID if needed
-    const resolvedChannel = await this.resolveChannelId(channel);
+    // If the channel looks like a DM (D…) AND the credential has a user token, route
+    // via xoxp. Bot tokens only see DMs the bot participates in, so user↔user DM threads
+    // return channel_not_found on xoxb. xoxp sees DMs the installing user is part of.
+    const isDmChannel = /^[D][A-Z0-9]+$/i.test(channel);
+    const tokens = this.getSlackTokens();
+    const useUserToken = isDmChannel && !!tokens.user;
+
+    // Resolve channel name to ID if needed (same token as the actual read)
+    const resolvedChannel = await this.resolveChannelId(channel, {
+      useUserToken,
+    });
 
     const queryParams: Record<string, string> = {
       channel: resolvedChannel,
@@ -2431,7 +2440,8 @@ Comprehensive Slack integration for messaging and workspace management.
     const response = await this.makeSlackApiCall(
       'conversations.replies',
       queryParams,
-      'GET'
+      'GET',
+      { useUserToken }
     );
 
     return {

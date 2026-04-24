@@ -650,14 +650,19 @@ export class AIAgentBubble extends ServiceBubble<
    */
   protected override async beforeAction(): Promise<void> {
     // Dynamic capability + credential injection (Pearl auto-activation).
-    // Only applies to the MASTER agent, not capability subagents.
-    // Subagents receive their single capability via the use-capability handler.
+    // Gated on a POSITIVE marker (_isPearlMaster === true) set by Pearl's
+    // entry point. Previously this block ran for any agent whose name didn't
+    // start with "Capability Agent:", which incorrectly included utility
+    // agents spawned inside workflows (e.g. ParseDocumentWorkflow's per-page
+    // OCR agent) and capability tool internals — they'd inherit Pearl's
+    // capabilities and _pearlChatModelOverride, then blow up in capability-
+    // pipeline when their explicit model+credentials were overwritten.
+    const dynamicExecMeta = this.context?.executionMeta as
+      | Record<string, unknown>
+      | undefined;
     const isSubAgent = this.params.name?.startsWith('Capability Agent:');
-    if (!isSubAgent) {
-      const dynamicExecMeta = this.context?.executionMeta as
-        | Record<string, unknown>
-        | undefined;
-
+    const isPearlMaster = dynamicExecMeta?._isPearlMaster === true;
+    if (isPearlMaster && !isSubAgent) {
       // Replace capabilities with dynamic list (Pearl-only, authoritative source)
       const dynamicCaps = dynamicExecMeta?._dynamicCapabilities as
         | Array<{

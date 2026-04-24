@@ -159,9 +159,9 @@ const ParseDocumentWorkflowParamsSchema = z.object({
     .describe('Options for PDF to images conversion'),
   aiOptions: z
     .object({
-      model: AvailableModels.default('google/gemini-2.5-flash').describe(
-        'AI model to use for document analysis and conversion'
-      ),
+      model: AvailableModels.default(
+        'google/gemini-3.1-flash-lite-preview'
+      ).describe('AI model to use for document analysis and conversion'),
       temperature: z
         .number()
         .min(0)
@@ -181,7 +181,7 @@ const ParseDocumentWorkflowParamsSchema = z.object({
         .describe('Use JSON mode for structured output'),
     })
     .default({
-      model: 'google/gemini-2.5-flash',
+      model: 'google/gemini-3.1-flash-lite-preview',
       temperature: 0.4,
       maxTokens: 9000,
       jsonMode: false,
@@ -621,7 +621,9 @@ export class ParseDocumentWorkflow extends WorkflowBubble<
             ],
             systemPrompt: pagePrompt,
             model: {
-              model: this.params.aiOptions?.model || 'google/gemini-2.5-flash',
+              model:
+                this.params.aiOptions?.model ||
+                'google/gemini-3.1-flash-lite-preview',
               temperature: this.params.aiOptions?.temperature || 0.4,
               maxTokens: this.params.aiOptions?.maxTokens || 2000,
               jsonMode: this.params.aiOptions?.jsonMode ?? false,
@@ -773,7 +775,9 @@ export class ParseDocumentWorkflow extends WorkflowBubble<
         metadata,
         conversionSummary,
         aiAnalysis: {
-          model: this.params.aiOptions?.model || 'google/gemini-2.5-flash',
+          model:
+            this.params.aiOptions?.model ||
+            'google/gemini-3.1-flash-lite-preview',
           iterations: totalAiIterations,
           processingTime: totalAiProcessingTime,
         },
@@ -803,7 +807,9 @@ export class ParseDocumentWorkflow extends WorkflowBubble<
           imagesDescribed: 0,
         },
         aiAnalysis: {
-          model: this.params.aiOptions?.model || 'google/gemini-2.5-flash',
+          model:
+            this.params.aiOptions?.model ||
+            'google/gemini-3.1-flash-lite-preview',
           iterations: 0,
           processingTime,
         },

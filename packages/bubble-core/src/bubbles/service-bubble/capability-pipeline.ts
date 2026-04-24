@@ -93,33 +93,34 @@ export async function applyCapabilityPreprocessing(
       if (override.maxIterations) params.maxIterations = override.maxIterations;
     }
   } else if (caps.length > 1) {
-    // Multi-capability master. The caller (typically Pro's pearl-chat) can
-    // fully drive the model + reasoning via executionMeta — that takes
-    // precedence so the Pearl model can be changed in Pro without an OSS
-    // publish. Otherwise fall back to RECOMMENDED_MODELS.CHAT.FAST/THOROUGH
-    // keyed off the simpler `_pearlEffort` flag.
+    // Multi-capability master. Gated on the positive _isPearlMaster marker so
+    // only Pearl's entry point drives the model override — user-built flows
+    // with multi-cap AIAgents keep their configured model.
     const meta = bubbleContext?.executionMeta as
       | Record<string, unknown>
       | undefined;
-    const overrideModel = meta?._pearlChatModelOverride as string | undefined;
-    const overrideReasoning = meta?._pearlReasoningEffort as
-      | 'low'
-      | 'medium'
-      | 'high'
-      | undefined;
-    const effort = meta?._pearlEffort;
+    const isPearlMaster = meta?._isPearlMaster === true;
+    if (isPearlMaster) {
+      const overrideModel = meta?._pearlChatModelOverride as string | undefined;
+      const overrideReasoning = meta?._pearlReasoningEffort as
+        | 'low'
+        | 'medium'
+        | 'high'
+        | undefined;
+      const effort = meta?._pearlEffort;
 
-    if (overrideModel) {
-      params.model.model = overrideModel as typeof params.model.model;
-      params.model.reasoningEffort = overrideReasoning ?? 'medium';
-    } else if (effort === 'thorough') {
-      params.model.model = RECOMMENDED_MODELS.CHAT
-        .THOROUGH as typeof params.model.model;
-      params.model.reasoningEffort = 'high';
-    } else {
-      params.model.model = RECOMMENDED_MODELS.CHAT
-        .FAST as typeof params.model.model;
-      params.model.reasoningEffort = 'medium';
+      if (overrideModel) {
+        params.model.model = overrideModel as typeof params.model.model;
+        params.model.reasoningEffort = overrideReasoning ?? 'medium';
+      } else if (effort === 'thorough') {
+        params.model.model = RECOMMENDED_MODELS.CHAT
+          .THOROUGH as typeof params.model.model;
+        params.model.reasoningEffort = 'high';
+      } else {
+        params.model.model = RECOMMENDED_MODELS.CHAT
+          .FAST as typeof params.model.model;
+        params.model.reasoningEffort = 'medium';
+      }
     }
   }
   // Single-capability master: preserve user's configured model — no override.

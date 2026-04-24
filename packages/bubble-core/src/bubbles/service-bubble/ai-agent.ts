@@ -1135,6 +1135,8 @@ export class AIAgentBubble extends ServiceBubble<
         return CredentialType.ANTHROPIC_CRED;
       case 'openrouter':
         return CredentialType.OPENROUTER_CRED;
+      case 'fireworks':
+        return CredentialType.FIREWORKS_CRED;
       default:
         throw new Error(`Unsupported model provider: ${provider}`);
     }
@@ -1162,6 +1164,8 @@ export class AIAgentBubble extends ServiceBubble<
         return credentials[CredentialType.ANTHROPIC_CRED];
       case 'openrouter':
         return credentials[CredentialType.OPENROUTER_CRED];
+      case 'fireworks':
+        return credentials[CredentialType.FIREWORKS_CRED];
       default:
         throw new Error(`Unsupported model provider: ${provider}`);
     }
@@ -1368,6 +1372,9 @@ export class AIAgentBubble extends ServiceBubble<
       case 'openrouter':
         apiKey = credentials[CredentialType.OPENROUTER_CRED];
         break;
+      case 'fireworks':
+        apiKey = credentials[CredentialType.FIREWORKS_CRED];
+        break;
       default:
         throw new Error(`Unsupported model provider: ${provider}`);
     }
@@ -1501,6 +1508,22 @@ export class AIAgentBubble extends ServiceBubble<
               exclude: false,
             },
           },
+        });
+      case 'fireworks':
+        return new ChatOpenAI({
+          model: modelName,
+          __includeRawResponse: true,
+          temperature,
+          maxTokens,
+          apiKey,
+          streaming: enableStreaming,
+          maxRetries: retries,
+          configuration: {
+            baseURL: 'https://api.fireworks.ai/inference/v1',
+          },
+          ...(reasoningEffort
+            ? { modelKwargs: { reasoning_effort: reasoningEffort } }
+            : {}),
         });
       default:
         throw new Error(`Unsupported model provider: ${provider}`);

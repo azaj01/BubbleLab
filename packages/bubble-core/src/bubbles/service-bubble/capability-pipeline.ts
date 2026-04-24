@@ -42,20 +42,45 @@ export async function applyCapabilityPreprocessing(
   const isSubAgent = params.name?.startsWith('Capability Agent: ');
 
   if (isSubAgent) {
-    // Sub-agent (spawned by use-capability): default to Gemini 3 Flash + low thinking,
-    // then let the capability's modelConfigOverride take precedence.
-    params.model.model =
-      RECOMMENDED_MODELS.GOOGLE_FLAGSHIP as typeof params.model.model;
-    params.model.reasoningEffort = 'low';
+    // Sub-agent (spawned by use-capability): check inheritParentModel first.
+    // If any capability opts in and the parent supplied a model via
+    // executionMeta._pearlChatModelOverride, use that instead of the Gemini
+    // Flash default + capability's modelConfigOverride.{model,reasoningEffort}.
+    const execMeta = bubbleContext?.executionMeta as
+      | Record<string, unknown>
+      | undefined;
+    const parentModel = execMeta?._pearlChatModelOverride as string | undefined;
+    const parentReasoning = execMeta?._pearlReasoningEffort as
+      | 'low'
+      | 'medium'
+      | 'high'
+      | undefined;
+    const inheritFromParent = caps.some(
+      (c) => getCapability(c.id)?.metadata.inheritParentModel === true
+    );
 
-    // Apply capability modelConfigOverride on top
+    if (inheritFromParent && parentModel) {
+      params.model.model = parentModel as typeof params.model.model;
+      params.model.reasoningEffort = parentReasoning;
+    } else {
+      // Default sub-agent model: Gemini 3 Flash + low thinking.
+      params.model.model =
+        RECOMMENDED_MODELS.GOOGLE_FLAGSHIP as typeof params.model.model;
+      params.model.reasoningEffort = 'low';
+    }
+
+    // Apply capability modelConfigOverride on top.
+    // When inheriting parent model, skip model/reasoningEffort fields so the
+    // parent's choice wins; still apply maxTokens/maxIterations.
     for (const capConfig of caps) {
       const capDef = getCapability(capConfig.id);
       const override = capDef?.metadata.modelConfigOverride;
       if (!override) continue;
-      if (override.model)
+      const skipModelFields =
+        capDef?.metadata.inheritParentModel === true && !!parentModel;
+      if (override.model && !skipModelFields)
         params.model.model = override.model as typeof params.model.model;
-      if (override.reasoningEffort !== undefined)
+      if (override.reasoningEffort !== undefined && !skipModelFields)
         params.model.reasoningEffort =
           override.reasoningEffort === 'none'
             ? undefined
@@ -68,9 +93,34 @@ export async function applyCapabilityPreprocessing(
       if (override.maxIterations) params.maxIterations = override.maxIterations;
     }
   } else if (caps.length > 1) {
-    // Multi-capability master: use Sonnet for reliable tool-calling / routing.
-    params.model.model = RECOMMENDED_MODELS.CHAT as typeof params.model.model;
-    params.model.reasoningEffort = 'medium';
+    // Multi-capability master. The caller (typically Pro's pearl-chat) can
+    // fully drive the model + reasoning via executionMeta — that takes
+    // precedence so the Pearl model can be changed in Pro without an OSS
+    // publish. Otherwise fall back to RECOMMENDED_MODELS.CHAT.FAST/THOROUGH
+    // keyed off the simpler `_pearlEffort` flag.
+    const meta = bubbleContext?.executionMeta as
+      | Record<string, unknown>
+      | undefined;
+    const overrideModel = meta?._pearlChatModelOverride as string | undefined;
+    const overrideReasoning = meta?._pearlReasoningEffort as
+      | 'low'
+      | 'medium'
+      | 'high'
+      | undefined;
+    const effort = meta?._pearlEffort;
+
+    if (overrideModel) {
+      params.model.model = overrideModel as typeof params.model.model;
+      params.model.reasoningEffort = overrideReasoning ?? 'medium';
+    } else if (effort === 'thorough') {
+      params.model.model = RECOMMENDED_MODELS.CHAT
+        .THOROUGH as typeof params.model.model;
+      params.model.reasoningEffort = 'high';
+    } else {
+      params.model.model = RECOMMENDED_MODELS.CHAT
+        .FAST as typeof params.model.model;
+      params.model.reasoningEffort = 'medium';
+    }
   }
   // Single-capability master: preserve user's configured model — no override.
 

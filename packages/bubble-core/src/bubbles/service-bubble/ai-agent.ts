@@ -1465,12 +1465,19 @@ export class AIAgentBubble extends ServiceBubble<
             : undefined;
 
         const isThinking = thinkingConfig != null;
+        // Anthropic requires max_tokens > thinking.budget_tokens. The caller's
+        // maxTokens may equal or undercut the budget (e.g. Pearl thorough
+        // lands on budget=10000 with the default floor=10000), which 400s on
+        // every turn. Pad output headroom on top of the thinking budget.
+        const resolvedMaxTokens = isThinking
+          ? Math.max(maxTokens ?? 0, thinkingConfig!.budget_tokens + 4096)
+          : maxTokens;
         const anthropicModel = new ChatAnthropic({
           model: modelName,
           // Anthropic requires temperature=1 when thinking is enabled
           temperature: isThinking ? 1 : temperature,
           anthropicApiKey: apiKey,
-          maxTokens,
+          maxTokens: resolvedMaxTokens,
           streaming: true,
           apiKey,
           ...(thinkingConfig && { thinking: thinkingConfig }),

@@ -24,39 +24,36 @@ import { AvailableModels } from '@bubblelab/shared-schemas';
 /**
  * System prompt for document parsing and markdown conversion
  */
-const DOCUMENT_PARSING_PROMPT = `Extract ONLY the most important information from this document. Focus on meaning and data, NOT text transcription.
+const DOCUMENT_PARSING_PROMPT = `Transcribe this page into clean, faithful markdown. Do NOT summarize, paraphrase, or drop content.
 
-CRITICAL LIMITS:
-- Maximum response: 800 words
-- NO full text transcription or OCR
-- Extract MEANING and NUMBERS only
-- Be concise and focused
+CORE RULES:
+- Transcribe every visible text element verbatim — headings, titles, jurisdiction/city/state names, form names, labels, field values, footnotes, signatures, dates, page numbers.
+- Preserve every identifier exactly as written (company names, account numbers, FEINs, addresses, phone numbers, emails, form IDs, docket numbers).
+- Preserve every number exactly as written (do not round, reformat, or drop currency symbols or trailing zeros).
+- Never collapse or merge items because they look similar to other pages. Each page is independent — its city, jurisdiction, form title, and totals must appear exactly as shown on THIS page.
 
-EXTRACT ONLY:
-1. **Key Numbers**: amounts, percentages, dates, quantities, IDs, phone numbers
-2. **Important Names**: people, companies, locations, products
-3. **Critical Data**: totals, balances, scores, measurements
-4. **Document Type**: what kind of document this is
-5. **Main Purpose**: what this document is about in 1-2 sentences
+STRUCTURE:
+- Use markdown headings that mirror the document's own headings (e.g., "# GOLDEN SALES TAX RETURN" if that's the page title).
+- Convert tables to markdown tables, preserving every row, column, and cell — including empty cells and 0.00 values.
+- Use bullet or numbered lists to match lists in the source.
+- Preserve section order top-to-bottom, left-to-right.
 
-IGNORE:
-- Full sentences and paragraphs
-- Boilerplate text
-- Legal disclaimers
-- Formatting details
-- Complete transcription
+VISUAL ELEMENTS:
+- Charts/graphs: describe type, axes, series, and transcribe every visible data point, label, legend entry, and axis tick.
+- Images/diagrams: describe what is shown and transcribe any visible text.
+- Checkboxes/radios: indicate checked vs unchecked and transcribe the label.
+- Stamps, signatures, handwritten notes: transcribe text and note that it is a stamp/signature/handwriting.
 
-FORMAT: Use bullet points. Be extremely concise. Focus on actionable data.
+BOILERPLATE:
+- Include headers, footers, disclaimers, and legal text — they often identify the jurisdiction or form. Do not drop them.
 
-EXAMPLE OUTPUT:
-• Document: Invoice
-• Company: XYZ Corp
-• Amount: $1,234.56
-• Date: 2024-01-15
-• Invoice #: INV-2024-001
-• Purpose: Software licensing fees
+DO NOT:
+- Summarize the page's "purpose" in your own words.
+- Add commentary, interpretation, or meta-text.
+- Skip any field just because its value is blank or 0.00.
+- Truncate long lists — include every item.
 
-STOP after extracting key data. Do not transcribe full text.`;
+If the page is blank or unreadable, say so explicitly.`;
 /**
  * Page analysis result interface
  */

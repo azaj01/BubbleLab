@@ -9,7 +9,7 @@ import base64
 import io
 import fitz  # PyMuPDF
 
-def pdf_to_images_for_ai(pdf_data, pages=None, max_pages=50):
+def pdf_to_images_for_ai(pdf_data, pages=None, max_pages=300):
     """Convert PDF pages to base64 images optimized for AI analysis (memory efficient)"""
     
     try:
@@ -20,8 +20,8 @@ def pdf_to_images_for_ai(pdf_data, pages=None, max_pages=50):
         print(f"📄 PDF has {total_pages} pages", file=sys.stderr)
         
         # Safety check to prevent server crashes
-        if total_pages > 100:
-            print(f"❌ PDF too large ({total_pages} pages). Maximum allowed: 100 pages", file=sys.stderr)
+        if total_pages > 300:
+            print(f"❌ PDF too large ({total_pages} pages). Maximum allowed: 300 pages", file=sys.stderr)
             pdf_document.close()
             return []
         
